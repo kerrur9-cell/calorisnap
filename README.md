@@ -1,36 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CaloriSnap
 
-## Getting Started
+Мобильный дневник питания: распознавание фото через Gemini, ручной ввод продуктов,
+калории и БЖУ, вода, история веса и статистика.
 
-First, run the development server:
+## Локальный запуск
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Требуется Node.js 22. Установите зависимости `npm ci`, скопируйте
+`.env.example` в `.env.local`, заполните Supabase URL, публичный anon/publishable key
+и серверный `GEMINI_API_KEY`. Запуск: `npm run dev`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+В Next.js публичные переменные встраиваются при сборке: после изменения
+`NEXT_PUBLIC_*` нужна новая сборка. Ключ Gemini никогда не должен иметь этот префикс.
+По умолчанию используется `gemini-3.6-flash`; `GEMINI_MODEL` позволяет выбрать другую
+доступную модель. Лимиты и стоимость определяются аккаунтом Google, бесплатная квота не гарантируется.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase: обязательная настройка
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Новая база: выполните по порядку:
 
-## Learn More
+1. `supabase/migrations/0001_init.sql`
+2. `supabase/migrations/0002_integrity.sql`
+3. `supabase/seed/0001_foods.sql`
 
-To learn more about Next.js, take a look at the following resources:
+Существующая база с первой миграцией: примените **только 0002**, не запускайте 0001
+повторно. Seed допускает повторное выполнение без дублирования стандартных продуктов.
+Перед production-миграцией сделайте резервную копию. Миграция 0002 не удаляет старые
+записи; новые CHECK constraints имеют NOT VALID, поэтому старые некорректные записи
+нужно проверить отдельно перед VALIDATE CONSTRAINT.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Миграция 0002 добавляет атомарные функции `save_meal`, `save_weight`,
+общую квоту AI и усиливает политики доступа. **Применить её нужно до выкладки
+нового frontend.** При отсутствии функции квоты AI отключается с 503, чтобы не
+пропускать запросы без ограничения.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+В Supabase Auth:
 
-## Deploy on Vercel
+- включите Google provider и задайте его credentials;
+- добавьте `http://localhost:3000/auth/callback` и production URL
+  `https://ВАШ-ДОМЕН/auth/callback` в Redirect URLs;
+- включите Allow manual linking для привязки гостя к Google;
+- выберите настройку Confirm Email: приложение поддерживает оба варианта;
+- для email подтверждений настройте SMTP и шаблон подтверждения под PKCE;
+- для гостей включите Anonymous Sign-ins и CAPTCHA (Cloudflare Turnstile).
+  Secret Turnstile задаётся в Supabase, публичный site key —
+  `NEXT_PUBLIC_TURNSTILE_SITE_KEY` в приложении. Добавьте домены в Turnstile.
+  Production UI отключает гостевой вход без site key, однако **защиту самого
+  Auth API обеспечивает настройка CAPTCHA в Supabase**, а не скрытие кнопки.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Публичный ключ Supabase — не секрет. Защиту данных обеспечивают RLS и авторизация.
+Не помещайте service_role/secret key в `NEXT_PUBLIC_*`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Проверки
+
+- `npm run lint` — исходники, без .next/.netlify, warnings считаются ошибками.
+- `npm run typecheck` — генерация route types и TypeScript.
+- `npm test` — тесты валидации, API и SQL/RLS на PGlite (PostgreSQL WASM).
+- `npm run build` — production build.
+- `npm run check` — все проверки.
+- GitHub Actions запускает `npm ci` и `npm run check`.
+
+SQL-тесты исполняют обе настоящие миграции с минимальными заглушками схем
+Supabase auth/storage. Они проверяют транзакции и RLS, но не заменяют проверку
+OAuth, SMTP и Storage HTTP API в вашем облачном проекте.
+
+## Netlify
+
+`netlify.toml` использует официальный Next.js runtime. Ручной rewrite для
+`/_next/static` не нужен. Команда сборки — `npm run build`, Node — 22.
+
+Задайте в Netlify build/runtime окружении переменные из `.env.example`.
+После изменения публичных значений пересоберите приложение.
+Локальная проверка адаптера: `netlify build`. Это не публикация.
+Публикуйте только после успешных проверок и применения миграции 0002.
+
+Для проверки production: вход, OAuth callback, сохранение еды/веса/воды,
+повторное сохранение, загрузка приватного фото, удаление, статистика.
+Ручной smoke-test выполняйте тестовым аккаунтом. Не используйте личные данные
+пользователей как fixtures.
+
+## Архитектура
+
+- `src/app/(auth)`: вход и параметры пользователя.
+- `src/app/(app)`: дневник, камера, каталог, вода, статистика, профиль.
+- `src/proxy.ts`: обновление auth cookies и маршрутизация страниц.
+- `src/app/api`: JSON endpoints с собственной проверкой пользователя.
+- `src/lib/ai`: вызов Gemini, структура ответа и диапазоны чисел.
+- `src/lib/nutrition`: чистые расчёты порций и норм для взрослых.
+- `src/hooks`: клиентская загрузка Supabase через TanStack Query.
+- `supabase/migrations`: схема, RLS и транзакции.
+- `tests`: регрессионные тесты.
+- `public/sw.js`: только офлайн-заглушка, без кэширования личных данных.
+
+Еда из камеры: согласие → сжатие JPEG → авторизованный API → квота
+(20 запросов в UTC-день, интервал 10 секунд) → Gemini → проверка → ручная
+коррекция → приватное фото → атомарная запись еды, позиций и feedback.
+UUID операции защищает повтор запроса после потери ответа от дублирования.
+При ошибке записи фото удаляется только после подтверждения, что транзакция
+не была зафиксирована.
+
+Postgres и Storage не имеют общей транзакции. При полной потере сети во время
+сохранения/удаления возможен незавершённый cleanup; нужна периодическая сверка
+непривязанных фотографий. Скрипт `scripts/audit-storage.mjs` только выводит кандидатов,
+не удаляет их. Не удаляйте новые фото, пока запрос сохранения ещё может завершиться.
+
+Сессии/кэш очищаются при смене аккаунта. Профиль хранит тему на сервере.
+Числа в AI-ответе проверяются, но их фактическая точность не гарантирована.
+
+## Что ещё зависит от окружения
+
+- Применение миграций к облачной БД и проверка существующих данных.
+- Настройка Google OAuth, SMTP, Turnstile и Redirect URLs.
+- Внешний сбор ошибок/алерты: серверные ошибки доступны в Netlify logs;
+  полноценный сервис мониторинга ещё не подключён.
+- Данные оператора приложения, контакт для запросов удаления/экспорта и сроки
+  хранения нужно утвердить перед публичным запуском. Страница /privacy описывает
+  техническую обработку, но не заменяет оформленную политику оператора.
+
+Фото и исправления используются приложением для дневника; автоматическое обучение
+Gemini не реализовано. Полноценной офлайн-синхронизации, подписок, сканера штрихкодов,
+HealthKit и push-уведомлений пока нет.
+
+Тестовые локальные `test_food.*` и `ai_result.json` исключены из Git.
+Существующие незакоммиченные файлы автоматически не коммитятся.

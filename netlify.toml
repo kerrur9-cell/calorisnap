@@ -1,0 +1,25 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Официальный плагин Netlify для Next.js:
+# берёт на себя SSR, Route Handlers, кэш и image optimization.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# AI-анализ — самый долгий запрос. У Gemini Vision обычно 3–10 сек,
+# даём запас, чтобы не ловить таймаут на медленной сети.
+[functions]
+  node_bundler = "esbuild"
+
+# Заголовки безопасности
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(self), microphone=(), geolocation=()"

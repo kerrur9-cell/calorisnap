@@ -1,0 +1,85 @@
+import { beforeAll, beforeEach, afterAll, describe, expect, it } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
+import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
+import { uuid_ossp } from "@electric-sql/pglite/contrib/uuid_ossp";
+import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+
+const alice = "00000000-0000-4000-8000-000000000001";
+const bob = "00000000-0000-4000-8000-000000000002";
+const row = { custom_food_name: "Рис", weight_grams: 100, calories: 130, protein_g: 2.7, fat_g: 0.3, carbs_g: 28.2, weight_source: "manual" };
+let db: PGlite;
+async function asUser(id: string) {
+  await db.exec("RESET ROLE");
+  await db.query("SELECT set_config('request.jwt.claim.sub',$1,false)", [id]);
+  await db.exec("SET ROLE authenticated");
+}
+async function save(id: string, items = [row]) {
+  return db.query("SELECT public.save_meal($1,'2026-09-17','lunch',$2::jsonb)", [id, JSON.stringify(items)]);
+}
+beforeAll(async () => {
+  db = new PGlite({ extensions: { pg_trgm, uuid_ossp } });
+  await db.exec(`CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE SCHEMA storage;
+    CREATE TABLE auth.users(id uuid PRIMARY KEY,raw_user_meta_data jsonb DEFAULT '{}');
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+    CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+    CREATE TABLE storage.objects(id uuid DEFAULT gen_random_uuid(),bucket_id text,name text);
+    CREATE FUNCTION storage.foldername(text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$ SELECT string_to_array($1,'/') $$;
+    ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;`);
+  await db.exec(readFileSync("supabase/migrations/0001_init.sql", "utf8"));
+  await db.exec(readFileSync("supabase/migrations/0002_integrity.sql", "utf8"));
+  await db.exec(`GRANT USAGE ON SCHEMA public,auth,storage TO authenticated;
+    GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public,storage TO authenticated;`);
+});
+beforeEach(async () => {
+  await db.exec(`RESET ROLE; TRUNCATE auth.users CASCADE;
+    INSERT INTO auth.users(id) VALUES('${alice}'),('${bob}');`);
+  await asUser(alice);
+});
+afterAll(async () => { await db?.close(); });
+describe("migrations and RLS on PostgreSQL", () => {
+  it("seeds repeatedly without duplicate catalog entries", async () => {
+    await db.exec("RESET ROLE");
+    const sql = readFileSync("supabase/seed/0001_foods.sql", "utf8");
+    await db.exec(sql);
+    const first = (await db.query("SELECT * FROM food_items WHERE created_by IS NULL")).rows.length;
+    await db.exec(sql);
+    expect((await db.query("SELECT * FROM food_items WHERE created_by IS NULL")).rows).toHaveLength(first);
+  });
+  it("rolls weight history back when profile target validation fails", async () => {
+    await expect(db.query("SELECT save_weight(75,'2026-09-17',$1)", [JSON.stringify({ daily_calorie_target: -1 })])).rejects.toThrow();
+    expect((await db.query("SELECT * FROM weight_entries")).rows).toHaveLength(0);
+  });
+  it("saves one meal and its items atomically and retries without duplicates", async () => {
+    const id = randomUUID(); await save(id); await save(id);
+    expect((await db.query("SELECT * FROM meal_entries")).rows).toHaveLength(1);
+    expect((await db.query("SELECT * FROM meal_items")).rows).toHaveLength(1);
+    expect((await db.query<{ total_calories: string }>("SELECT total_calories FROM daily_stats")).rows[0].total_calories).toBe("130.0");
+  });
+  it("rolls the entire meal back if one item is invalid", async () => {
+    await expect(save(randomUUID(), [row, { ...row, calories: -10 }])).rejects.toThrow();
+    expect((await db.query("SELECT * FROM meal_entries")).rows).toHaveLength(0);
+  });
+  it("blocks cross-account children and hides another user's meals and stats", async () => {
+    const id = randomUUID(); await save(id); await asUser(bob);
+    expect((await db.query("SELECT * FROM meal_entries")).rows).toHaveLength(0);
+    expect((await db.query("SELECT * FROM daily_stats")).rows).toHaveLength(0);
+    await expect(db.query(`INSERT INTO meal_items(meal_entry_id,user_id,weight_grams,calories,protein_g,fat_g,carbs_g)
+      VALUES($1,$2,100,1,1,1,1)`, [id,bob])).rejects.toThrow(/row-level security/);
+    await expect(save(id)).rejects.toThrow();
+  });
+  it("prevents self-verification of custom foods", async () => {
+    await expect(db.query(`INSERT INTO food_items(name,created_by,source,is_verified,calories_per_100g,protein_per_100g,fat_per_100g,carbs_per_100g)
+      VALUES('Fake',$1,'user_custom',true,100,1,1,1)`,[alice])).rejects.toThrow(/row-level security/);
+  });
+  it("enforces a quota across repeated function calls", async () => {
+    expect((await db.query<{ allowed: boolean }>("SELECT consume_ai_quota() AS allowed")).rows[0].allowed).toBe(true);
+    expect((await db.query<{ allowed: boolean }>("SELECT consume_ai_quota() AS allowed")).rows[0].allowed).toBe(false);
+    await expect(db.query("UPDATE ai_usage SET count=0")).resolves.toMatchObject({ affectedRows: 0 });
+  });
+  it("upserts today's weight using its actual unique key", async () => {
+    const sql = "INSERT INTO weight_entries(user_id,weight_kg,recorded_at) VALUES($1,$2,'2026-09-17') ON CONFLICT(user_id,recorded_at) DO UPDATE SET weight_kg=excluded.weight_kg";
+    await db.query(sql,[alice,75]); await db.query(sql,[alice,76]);
+    expect((await db.query("SELECT * FROM weight_entries")).rows).toHaveLength(1);
+  });
+});
