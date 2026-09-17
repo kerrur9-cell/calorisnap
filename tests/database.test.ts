@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, afterAll, describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { uuid_ossp } from "@electric-sql/pglite/contrib/uuid_ossp";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 
 const alice = "00000000-0000-4000-8000-000000000001";
@@ -26,8 +26,9 @@ beforeAll(async () => {
     CREATE TABLE storage.objects(id uuid DEFAULT gen_random_uuid(),bucket_id text,name text);
     CREATE FUNCTION storage.foldername(text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$ SELECT string_to_array($1,'/') $$;
     ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;`);
-  await db.exec(readFileSync("supabase/migrations/0001_init.sql", "utf8"));
-  await db.exec(readFileSync("supabase/migrations/0002_integrity.sql", "utf8"));
+  for (const file of readdirSync("supabase/migrations").filter((name) => name.endsWith(".sql")).sort()) {
+    await db.exec(readFileSync(`supabase/migrations/${file}`, "utf8"));
+  }
   await db.exec(`GRANT USAGE ON SCHEMA public,auth,storage TO authenticated;
     GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public,storage TO authenticated;`);
 });
