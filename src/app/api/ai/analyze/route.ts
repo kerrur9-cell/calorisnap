@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeFoodPhoto } from "@/lib/ai/gemini";
+import { analyzeFoodPhotoWithGroq } from "@/lib/ai/groq";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
@@ -72,12 +73,16 @@ async function analyzeRequest(request: NextRequest) {
   }
 
   try {
-    const attempt = request.headers.get("x-analysis-attempt") === "secondary" ? "secondary" : "primary";
-    const result = await analyzeFoodPhoto({
+    const attemptHeader = request.headers.get("x-analysis-attempt");
+    const attempt = attemptHeader === "secondary" || attemptHeader === "tertiary" ? attemptHeader : "primary";
+    const input = {
       dataBase64,
       mimeType,
       totalWeightGrams,
-    }, attempt);
+    };
+    const result = attempt === "tertiary"
+      ? await analyzeFoodPhotoWithGroq(input)
+      : await analyzeFoodPhoto(input, attempt);
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     // The provider code intentionally exposes only human-safe messages; showing
@@ -85,7 +90,12 @@ async function analyzeRequest(request: NextRequest) {
     const message = error instanceof Error && error.message.length <= 180
       ? error.message
       : "Не удалось распознать фото. Попробуйте ещё раз или добавьте еду вручную.";
-    return NextResponse.json({ error: message, retryable: request.headers.get("x-analysis-attempt") !== "secondary" && Boolean(process.env.GEMINI_FALLBACK_API_KEY) }, { status: 503 });
+    const attempt = request.headers.get("x-analysis-attempt");
+    const nextAttempt = attempt === "tertiary" ? null
+      : attempt === "secondary" ? (process.env.GROQ_API_KEY ? "tertiary" : null)
+      : process.env.GEMINI_FALLBACK_API_KEY ? "secondary"
+      : process.env.GROQ_API_KEY ? "tertiary" : null;
+    return NextResponse.json({ error: message, retryable: Boolean(nextAttempt), nextAttempt }, { status: 503 });
   }
 }
 

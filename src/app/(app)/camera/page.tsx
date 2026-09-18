@@ -56,6 +56,7 @@ function CameraFlow() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [analysisAttempt, setAnalysisAttempt] = useState<"secondary" | "tertiary" | null>(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
   const [consent, setConsent] = useState(false);
 
@@ -75,6 +76,7 @@ function CameraFlow() {
     pendingMeal.current = null;
     setStage("analyzing");
     setRetrying(false);
+    setAnalysisAttempt(null);
     setError(null);
 
     const weight = Number(totalWeight.replace(",", "."));
@@ -92,11 +94,12 @@ function CameraFlow() {
       });
       let json = await res.json();
 
-      if (!res.ok && json.retryable) {
+      for (let fallback = 0; !res.ok && json.retryable && json.nextAttempt && fallback < 2; fallback++) {
         setRetrying(true);
+        setAnalysisAttempt(json.nextAttempt);
         res = await fetch("/api/ai/analyze", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-analysis-attempt": "secondary" },
+          headers: { "Content-Type": "application/json", "x-analysis-attempt": json.nextAttempt },
           body: requestBody,
         });
         json = await res.json();
@@ -262,7 +265,7 @@ function CameraFlow() {
         }</div>
       )}
 
-      {stage === "analyzing" && <AnalyzingStage retrying={retrying} />}
+      {stage === "analyzing" && <AnalyzingStage retrying={retrying} attempt={analysisAttempt} />}
 
       {stage === "error" && (
         <div className="flex flex-col items-center gap-4 rounded-3xl bg-card p-8 text-center">
@@ -368,7 +371,7 @@ const ANALYSIS_MESSAGES = [
   "Сверяем калории и БЖУ…",
 ];
 
-function AnalyzingStage({ retrying }: { retrying: boolean }) {
+function AnalyzingStage({ retrying, attempt }: { retrying: boolean; attempt: "secondary" | "tertiary" | null }) {
   const [messageIndex, setMessageIndex] = useState(0);
   useEffect(() => {
     if (retrying) return;
@@ -382,9 +385,9 @@ function AnalyzingStage({ retrying }: { retrying: boolean }) {
         <span className="animate-pulse-soft text-4xl motion-reduce:animate-none" aria-hidden="true">🍽️</span>
       </div>
       <div>
-        <p className="text-lg font-semibold">{retrying ? "Пробуем последний раз…" : "Распознаём еду…"}</p>
+        <p className="text-lg font-semibold">{attempt === "tertiary" ? "Пробуем последний раз…" : retrying ? "Проверяем фото ещё раз…" : "Распознаём еду…"}</p>
         <p className="mt-2 min-h-10 text-sm text-muted-foreground">
-          {retrying ? "Первый анализ не удался. Подключаем запасной Gemini…" : ANALYSIS_MESSAGES[messageIndex]}
+          {attempt === "tertiary" ? "Gemini не справился. Подключаем Groq…" : retrying ? "Первый анализ не удался. Подключаем запасной Gemini…" : ANALYSIS_MESSAGES[messageIndex]}
         </p>
       </div>
     </div>

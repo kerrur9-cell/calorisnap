@@ -69,7 +69,7 @@ async function callGemini(
     }
 }
 
-function rebalanceWeights(
+export function rebalanceWeights(
   data: AiAnalysisResponse,
   totalWeightGrams?: number,
 ): AiAnalysisResponse {

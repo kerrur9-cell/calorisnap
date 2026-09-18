@@ -2,13 +2,14 @@
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, Camera, Droplets } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator } from "lucide-react";
 import { useDayLog, mealTypeMeta, MEAL_TYPES } from "@/hooks/useDayLog";
 import { useProfile } from "@/hooks/useProfile";
 import { CalorieRing } from "@/components/day/CalorieRing";
 import { MacroBar } from "@/components/day/MacroBar";
 import { MealCard } from "@/components/day/MealCard";
 import { todayKey, addDays } from "@/lib/utils";
+import { FoodAssistant } from "@/components/day/FoodAssistant";
 
 /**
  * Главный экран: день пользователя.
@@ -16,6 +17,7 @@ import { todayKey, addDays } from "@/lib/utils";
  */
 export default function DayPage() {
   const [dateKey, setDateKey] = useState(todayKey());
+  const [showAssistant, setShowAssistant] = useState(false);
   const isToday = dateKey === todayKey();
 
   const { data: day, isLoading, error } = useDayLog(dateKey);
@@ -72,6 +74,9 @@ export default function DayPage() {
           {/* Кольцо калорий */}
           <section className="mb-6 flex flex-col items-center">
             <CalorieRing current={day?.totals.calories ?? 0} target={targetCalories} />
+            {isToday && <button onClick={() => setShowAssistant(true)} className="mt-3 flex items-center gap-2 rounded-full bg-primary-soft px-4 py-2 text-sm font-medium text-primary"><Sparkles className="h-4 w-4" /> Спросить, что можно съесть</button>}
+            {isToday && showAssistant && <FoodAssistant onClose={() => setShowAssistant(false)} />}
+            <Link href="/calculator" className="mt-3 flex items-center gap-1 text-sm text-muted-foreground underline"><Calculator className="h-4 w-4" /> Калькулятор калорий</Link>
           </section>
 
           {/* БЖУ */}
