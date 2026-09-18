@@ -7,12 +7,14 @@
 
 Требуется Node.js 22. Установите зависимости `npm ci`, скопируйте
 `.env.example` в `.env.local`, заполните Supabase URL, публичный anon/publishable key
-и серверный `GEMINI_API_KEY`. Запуск: `npm run dev`.
+и серверный `GEMINI_API_KEY`. Для второй попытки анализа фото добавьте
+`GEMINI_FALLBACK_API_KEY`. Запуск: `npm run dev`.
 
 В Next.js публичные переменные встраиваются при сборке: после изменения
 `NEXT_PUBLIC_*` нужна новая сборка. Ключ Gemini никогда не должен иметь этот префикс.
-По умолчанию используется `gemini-3.6-flash`; `GEMINI_MODEL` позволяет выбрать другую
-доступную модель. Лимиты и стоимость определяются аккаунтом Google, бесплатная квота не гарантируется.
+Первый запрос использует `gemini-3.5-flash`, запасной — `gemini-3.6-flash` с отдельным
+ключом. Модели можно изменить через `GEMINI_PRIMARY_MODEL` и `GEMINI_FALLBACK_MODEL`.
+Лимиты и стоимость определяются аккаунтом Google, бесплатная квота не гарантируется.
 
 ## Supabase: обязательная настройка
 
@@ -21,6 +23,16 @@
 1. `supabase/migrations/0001_init.sql`
 2. `supabase/migrations/0002_integrity.sql`
 3. `supabase/seed/0001_foods.sql`
+4. `supabase/migrations/0003_more_foods.sql`
+5. `supabase/migrations/0004_open_food_facts.sql`
+6. `supabase/migrations/0005_fuzzy_food_search.sql`
+
+Каталог Open Food Facts распространяется по [ODbL](https://opendatacommons.org/licenses/odbl/).
+Файл 0004 создан из массового CSV-экспорта скриптом `scripts/generate-off-import.py`;
+скрипт также создаёт CSV для импорта через Supabase Dashboard. У импортированных
+продуктов проверяются название и КБЖУ, но сами сведения предоставлены участниками
+Open Food Facts и могут содержать ошибки. Внешний поиск вызывается отдельной кнопкой,
+чтобы не превысить лимит поискового API при вводе текста.
 
 Существующая база с первой миграцией: примените **только 0002**, не запускайте 0001
 повторно. Seed допускает повторное выполнение без дублирования стандартных продуктов.
@@ -59,7 +71,7 @@
 - `npm run check` — все проверки.
 - GitHub Actions запускает `npm ci` и `npm run check`.
 
-SQL-тесты исполняют обе настоящие миграции с минимальными заглушками схем
+SQL-тесты исполняют настоящие миграции с минимальными заглушками схем
 Supabase auth/storage. Они проверяют транзакции и RLS, но не заменяют проверку
 OAuth, SMTP и Storage HTTP API в вашем облачном проекте.
 

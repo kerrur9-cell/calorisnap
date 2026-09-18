@@ -72,11 +72,12 @@ async function analyzeRequest(request: NextRequest) {
   }
 
   try {
+    const attempt = request.headers.get("x-analysis-attempt") === "secondary" ? "secondary" : "primary";
     const result = await analyzeFoodPhoto({
       dataBase64,
       mimeType,
       totalWeightGrams,
-    });
+    }, attempt);
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     // The provider code intentionally exposes only human-safe messages; showing
@@ -84,7 +85,7 @@ async function analyzeRequest(request: NextRequest) {
     const message = error instanceof Error && error.message.length <= 180
       ? error.message
       : "Не удалось распознать фото. Попробуйте ещё раз или добавьте еду вручную.";
-    return NextResponse.json({ error: message }, { status: 503 });
+    return NextResponse.json({ error: message, retryable: request.headers.get("x-analysis-attempt") !== "secondary" && Boolean(process.env.GEMINI_FALLBACK_API_KEY) }, { status: 503 });
   }
 }
 

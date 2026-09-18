@@ -27,6 +27,7 @@ interface SearchResult {
   id: string;
   name: string;
   name_local: string | null;
+  barcode?: string | null;
   calories_per_100g: number;
   protein_per_100g: number;
   fat_per_100g: number;
@@ -53,11 +54,14 @@ function FoodsFlow() {
 
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [externalResults, setExternalResults] = useState<SearchResult[] | null>(null);
+  const [externalLoading, setExternalLoading] = useState(false);
   const [selected, setSelected] = useState<SearchResult | null>(null);
   const [weight, setWeight] = useState("100");
   const [adding, setAdding] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const externalQuery = useRef("");
   const pendingMeal = useRef<string | null>(null);
   const addLock = useRef(false);
 
@@ -87,6 +91,30 @@ function FoodsFlow() {
     return () => { clearTimeout(timer); controller.abort(); };
   }, [q]);
 
+  async function searchExternal() {
+    const query = q.trim();
+    if (query.length < 2 || externalLoading) return;
+    externalQuery.current = query;
+    setError(null);
+    setExternalLoading(true);
+    try {
+      const response = await fetch(`/api/foods/external?q=${encodeURIComponent(query)}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Не удалось найти продукты");
+      if (externalQuery.current === query) setExternalResults(result.items ?? []);
+    } catch (cause) {
+      if (externalQuery.current === query) setError(cause instanceof Error ? cause.message : "Не удалось найти продукты");
+    } finally {
+      setExternalLoading(false);
+    }
+  }
+
+  const importedBarcodes = new Set((results ?? []).map((food) => food.barcode).filter(Boolean));
+  const visibleResults = [
+    ...(externalResults ?? []).filter((food) => !importedBarcodes.has(food.id.slice(4))),
+    ...(results ?? []),
+  ];
+
   async function addItem(food: SearchResult) {
     if (addLock.current) return;
     const grams = Number(weight.replace(",", "."));
@@ -106,7 +134,7 @@ function FoodsFlow() {
 
     pendingMeal.current ??= crypto.randomUUID();
     await saveMeal({ id: pendingMeal.current, date: dateKey, type: mealType, items: [{
-      food_item_id: food.id,
+      food_item_id: food.id.startsWith("off:") ? null : food.id,
       custom_food_name: food.name_local || food.name,
       weight_grams: grams,
       calories: nutrition.calories,
@@ -228,12 +256,27 @@ function FoodsFlow() {
         <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setExternalResults(null);
+            externalQuery.current = "";
+          }}
           maxLength={100}
           placeholder="Найти продукт…"
           className="w-full rounded-2xl border border-border bg-card py-3.5 pl-10 pr-4 outline-none focus:border-primary"
         />
       </div>
+
+      {!selected && q.trim().length >= 2 && (
+        <button
+          onClick={searchExternal}
+          disabled={externalLoading}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-primary px-4 py-3 text-sm font-medium text-primary disabled:opacity-50"
+        >
+          {externalLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {externalLoading ? "Ищем…" : "Искать ещё в Open Food Facts"}
+        </button>
+      )}
 
       {/* Выбранный продукт — ввод веса */}
       {selected && (
@@ -293,9 +336,9 @@ function FoodsFlow() {
       {/* Результаты поиска */}
       {!selected && (
         <>
-          {results && results.length > 0 && (
+          {visibleResults.length > 0 && (
             <ul className="space-y-2">
-              {results.map((food, i) => (
+              {visibleResults.map((food, i) => (
                 <li key={food.id}>
                   <button
                     onClick={() => {
@@ -310,8 +353,7 @@ function FoodsFlow() {
                         {food.name_local || food.name}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Б {food.protein_per_100g} · Ж {food.fat_per_100g} · У{" "}
-                        {food.carbs_per_100g} / 100г
+                        {food.id.startsWith("off:") && "Open Food Facts · "}Б {food.protein_per_100g} · Ж {food.fat_per_100g} · У {food.carbs_per_100g} / 100г
                       </div>
                     </div>
                     <div className="text-sm font-semibold tabular-nums">
@@ -334,7 +376,7 @@ function FoodsFlow() {
               ))}
             </ul>
           )}
-          {results && results.length === 0 && !showCustom && (
+          {results && visibleResults.length === 0 && !showCustom && (
             <button
               onClick={() => setShowCustom(true)}
               className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border py-4 text-sm text-muted-foreground hover:text-primary"
@@ -390,6 +432,9 @@ function FoodsFlow() {
           )}
         </>
       )}
+      <a href="https://world.openfoodfacts.org" className="mt-6 block text-center text-xs text-muted-foreground">
+        Данные продуктов: Open Food Facts
+      </a>
     </main>
   );
 }

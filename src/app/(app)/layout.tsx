@@ -34,7 +34,12 @@ export default async function AppLayout({
     <div className="mx-auto min-h-dvh max-w-md">
       <ThemeSync />
       {/* Один скролл-контейнер с отступом под таб-бар */}
-      <div className="pb-24">{children}</div>
+      <div className="pb-24">
+        {children}
+        <footer className="px-4 pb-2 text-center text-xs text-muted-foreground">
+          Данные о части продуктов: <a href="https://world.openfoodfacts.org" className="underline">Open Food Facts</a> (ODbL)
+        </footer>
+      </div>
       <TabBar />
     </div>
   );

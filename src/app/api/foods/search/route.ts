@@ -18,23 +18,13 @@ async function search(request: NextRequest) {
   if (q.length > 100) return NextResponse.json({ error: "Слишком длинный запрос" }, { status: 400 });
   const search = q.replace(/[\\%_,().]/g, " ").trim();
 
-  let query = supabase
-    .from("food_items")
-    .select("id, name, name_local, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, source, is_verified")
-    .order("is_verified", { ascending: false })
-    .limit(limit);
-
-  if (search) {
-    // ilike покрывает и русские, и английские названия
-    query = supabase
-      .from("food_items")
-      .select("id, name, name_local, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, source, is_verified")
-      .or(`name.ilike.%${search}%,name_local.ilike.%${search}%`)
-      .order("is_verified", { ascending: false })
-      .limit(limit);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = search.length >= 2
+    ? await supabase.rpc("search_foods", { p_query: search, p_limit: limit })
+        .select("id, name, name_local, barcode, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, source, is_verified")
+    : await supabase.from("food_items")
+        .select("id, name, name_local, barcode, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, source, is_verified")
+        .order("is_verified", { ascending: false })
+        .limit(limit);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

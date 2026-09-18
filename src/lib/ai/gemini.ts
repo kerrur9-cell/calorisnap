@@ -6,8 +6,6 @@ import { safeParseAnalysis, type AiAnalysisResponse } from "./schema";
  * ключ живёт в GEMINI_API_KEY и в браузер не попадает.
  */
 
-// gemini-3.6-flash часто отдаёт 429/high demand. Для фотоанализа первым
-// используем стабильный flash, а переменную GEMINI_MODEL оставляем запасной.
 const GEMINI_PRIMARY_MODEL = process.env.GEMINI_PRIMARY_MODEL ?? "gemini-3.5-flash";
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
 const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? GEMINI_MODEL;
@@ -29,22 +27,15 @@ async function fetchWithTimeout(
   return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
 }
 
-async function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 /**
- * Вызов Gemini с ретраями. Google периодически отдаёт 429/503 («high demand»),
- * поэтому при перегрузке сразу используем стабильную запасную модель.
+ * Один вызов Gemini. Вторая попытка идёт отдельным HTTP-запросом клиента,
+ * чтобы каждый вызов уложился в таймаут функции и UI показал реальный этап.
  */
 async function callGemini(
   body: object,
+  apiKey: string,
+  model: string,
 ): Promise<{ ok: true; text: string } | { ok: false; status: number; message: string }> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  let last: { status: number; message: string } | null = null;
-  const models = [...new Set([GEMINI_PRIMARY_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_MODEL])];
-
-  for (const [index, model] of models.entries()) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     try {
       const res = await fetchWithTimeout(
@@ -53,7 +44,7 @@ async function callGemini(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-goog-api-key": apiKey!,
+            "x-goog-api-key": apiKey,
           },
           body: JSON.stringify(body),
         },
@@ -61,32 +52,21 @@ async function callGemini(
       );
 
       if (!res.ok) {
-        last = { status: res.status, message: `Gemini ошибка ${res.status}` };
-        // Capacity errors are often model-specific; fail over immediately.
-        if (res.status === 429 || res.status >= 500) {
-          if (index < models.length - 1) await sleep(300);
-          continue;
-        }
+        const message = `Gemini ошибка ${res.status}`;
         const text = await res.text().catch(() => "");
-        return { ok: false, status: res.status, message: `${last.message}: ${text.slice(0, 200)}` };
+        return { ok: false, status: res.status, message: `${message}: ${text.slice(0, 200)}` };
       }
 
       const json = await res.json();
       const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) {
-        last = { status: 200, message: "Gemini вернул пустой ответ" };
-        if (index < models.length - 1) await sleep(300);
-        continue;
+        return { ok: false, status: 200, message: "Gemini вернул пустой ответ" };
       }
       return { ok: true, text: rawText };
     } catch {
       // A network issue may be isolated to the current model endpoint.
-      last = { status: 0, message: "Gemini не ответил по сети" };
-      if (index < models.length - 1) await sleep(300);
+      return { ok: false, status: 0, message: "Gemini не ответил по сети" };
     }
-  }
-
-  return { ok: false, status: last?.status ?? 0, message: last?.message ?? "Gemini недоступен" };
 }
 
 function rebalanceWeights(
@@ -131,10 +111,11 @@ function rebalanceWeights(
 
 export async function analyzeFoodPhoto(
   input: AnalyzePhotoInput,
+  attempt: "primary" | "secondary" = "primary",
 ): Promise<AiAnalysisResponse> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = attempt === "secondary" ? process.env.GEMINI_FALLBACK_API_KEY : process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error("АI не настроен: нет GEMINI_API_KEY");
+    throw new Error("AI не настроен: отсутствует ключ Gemini");
   }
 
   // Дополняем промпт переданным весом
@@ -169,7 +150,7 @@ export async function analyzeFoodPhoto(
     },
   };
 
-  const response = await callGemini(body);
+  const response = await callGemini(body, apiKey, attempt === "secondary" ? GEMINI_FALLBACK_MODEL : GEMINI_PRIMARY_MODEL);
   if (!response.ok) {
     if (response.status === 429 || response.status >= 500) {
       throw new Error("AI временно перегружен. Попробуйте ещё раз через минуту.");

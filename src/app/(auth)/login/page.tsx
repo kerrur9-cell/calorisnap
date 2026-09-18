@@ -207,6 +207,9 @@ export default function LoginPage() {
           </form>
         )}
       </div>
+      <a href="https://world.openfoodfacts.org" className="mt-6 text-center text-xs text-muted-foreground underline">
+        Данные о части продуктов: Open Food Facts (ODbL)
+      </a>
     </main>
   );
 }

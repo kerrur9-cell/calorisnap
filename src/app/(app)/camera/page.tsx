@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -55,6 +55,7 @@ function CameraFlow() {
   const [items, setItems] = useState<EditableItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [consent, setConsent] = useState(false);
 
   async function handleCapture(next: PhotoInput) {
@@ -66,22 +67,33 @@ function CameraFlow() {
     setPhoto(next);
     pendingMeal.current = null;
     setStage("analyzing");
+    setRetrying(false);
     setError(null);
 
     const weight = Number(totalWeight.replace(",", "."));
 
     try {
-      const res = await fetch("/api/ai/analyze", {
+      const requestBody = JSON.stringify({
+        data: next.dataBase64,
+        mime_type: next.mimeType,
+        total_weight_grams: weight > 0 ? weight : undefined,
+      });
+      let res = await fetch("/api/ai/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: next.dataBase64,
-          mime_type: next.mimeType,
-          total_weight_grams: weight > 0 ? weight : undefined,
-        }),
+        body: requestBody,
       });
+      let json = await res.json();
 
-      const json = await res.json();
+      if (!res.ok && json.retryable) {
+        setRetrying(true);
+        res = await fetch("/api/ai/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-analysis-attempt": "secondary" },
+          body: requestBody,
+        });
+        json = await res.json();
+      }
 
       if (!res.ok) {
         throw new Error(
@@ -242,7 +254,7 @@ function CameraFlow() {
         }</div>
       )}
 
-      {stage === "analyzing" && <AnalyzingStage />}
+      {stage === "analyzing" && <AnalyzingStage retrying={retrying} />}
 
       {stage === "error" && (
         <div className="flex flex-col items-center gap-4 rounded-3xl bg-card p-8 text-center">
@@ -332,17 +344,32 @@ function CaptureStage({
   );
 }
 
-function AnalyzingStage() {
+const ANALYSIS_MESSAGES = [
+  "Пытаемся понять, что на фото…",
+  "Отличаем маслины от оливок…",
+  "Приглядываемся к ингредиентам…",
+  "Считаем примерный размер порции…",
+  "Ищем, что спряталось под соусом…",
+  "Сверяем калории и БЖУ…",
+];
+
+function AnalyzingStage({ retrying }: { retrying: boolean }) {
+  const [messageIndex, setMessageIndex] = useState(0);
+  useEffect(() => {
+    if (retrying) return;
+    const timer = window.setInterval(() => setMessageIndex((index) => (index + 1) % ANALYSIS_MESSAGES.length), 3200);
+    return () => window.clearInterval(timer);
+  }, [retrying]);
   return (
-    <div className="flex flex-col items-center gap-6 rounded-3xl bg-card p-10 text-center">
-      <div className="relative">
-        <div className="h-16 w-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-        <Check className="absolute inset-0 m-auto h-6 w-6 text-primary" />
+    <div className="flex flex-col items-center gap-6 rounded-3xl bg-card p-10 text-center shadow-sm" role="status" aria-live="polite">
+      <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-primary-soft">
+        <div className="absolute inset-2 rounded-full border-4 border-primary/20 border-t-primary motion-safe:animate-spin" />
+        <span className="animate-pulse-soft text-4xl motion-reduce:animate-none" aria-hidden="true">🍽️</span>
       </div>
       <div>
-        <p className="text-lg font-semibold">Распознаём еду…</p>
-        <p className="text-sm text-muted-foreground">
-          Модель определяет продукты, вес и калорийность
+        <p className="text-lg font-semibold">{retrying ? "Пробуем последний раз…" : "Распознаём еду…"}</p>
+        <p className="mt-2 min-h-10 text-sm text-muted-foreground">
+          {retrying ? "Первый анализ не удался. Подключаем запасной Gemini…" : ANALYSIS_MESSAGES[messageIndex]}
         </p>
       </div>
     </div>

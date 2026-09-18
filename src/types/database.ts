@@ -168,6 +168,7 @@ export interface Database {
       save_meal: { Args: { p_id: string; p_date: string; p_type: string; p_items: Json; p_photo?: string | null; p_analysis?: Json | null }; Returns: string };
       consume_ai_quota: { Args: Record<string, never>; Returns: boolean };
       save_weight: { Args: { p_weight: number; p_date: string; p_targets: Json }; Returns: undefined };
+      search_foods: { Args: { p_query: string; p_limit?: number }; Returns: FoodItem[] };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;

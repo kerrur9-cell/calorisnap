@@ -36,6 +36,7 @@ yarn-error.log*
 /ai_result.json
 /test_food.b64
 /test_food.jpg
+/open-food-facts-import.csv
 
 # vercel
 .vercel

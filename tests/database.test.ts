@@ -39,6 +39,15 @@ beforeEach(async () => {
 });
 afterAll(async () => { await db?.close(); });
 describe("migrations and RLS on PostgreSQL", () => {
+  it("imports thousands of public products and finds a typo", async () => {
+    await db.exec("RESET ROLE");
+    await db.exec(readFileSync("supabase/migrations/0004_open_food_facts.sql", "utf8"));
+    await asUser(alice);
+    const count = await db.query<{ count: string }>("SELECT count(*)::text AS count FROM public.food_items WHERE source = 'open_food_facts'");
+    expect(Number(count.rows[0].count)).toBeGreaterThanOrEqual(4700);
+    const found = await db.query<{ name: string }>("SELECT name FROM public.search_foods('драникк', 20)");
+    expect(found.rows.some((food) => food.name.toLowerCase().includes("драник"))).toBe(true);
+  });
   it("seeds repeatedly without duplicate catalog entries", async () => {
     await db.exec("RESET ROLE");
     const sql = readFileSync("supabase/seed/0001_foods.sql", "utf8");
