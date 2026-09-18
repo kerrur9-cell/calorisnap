@@ -9,7 +9,7 @@ import { CalorieRing } from "@/components/day/CalorieRing";
 import { MacroBar } from "@/components/day/MacroBar";
 import { MealCard } from "@/components/day/MealCard";
 import { todayKey, addDays } from "@/lib/utils";
-import { FoodAssistant } from "@/components/day/FoodAssistant";
+import { FoodAssistant, FoodAssistantBoundary } from "@/components/day/FoodAssistant";
 
 /**
  * Главный экран: день пользователя.
@@ -75,7 +75,7 @@ export default function DayPage() {
           <section className="mb-6 flex flex-col items-center">
             <CalorieRing current={day?.totals.calories ?? 0} target={targetCalories} />
             {isToday && <button onClick={() => setShowAssistant(true)} className="mt-3 flex items-center gap-2 rounded-full bg-primary-soft px-4 py-2 text-sm font-medium text-primary"><Sparkles className="h-4 w-4" /> Спросить, что можно съесть</button>}
-            {isToday && showAssistant && <FoodAssistant onClose={() => setShowAssistant(false)} />}
+            {isToday && showAssistant && <FoodAssistantBoundary><FoodAssistant onClose={() => setShowAssistant(false)} /></FoodAssistantBoundary>}
             <Link href="/calculator" className="mt-3 flex items-center gap-1 text-sm text-muted-foreground underline"><Calculator className="h-4 w-4" /> Калькулятор калорий</Link>
           </section>
 

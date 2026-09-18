@@ -1,10 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { Loader2, Send, X } from "lucide-react";
 import { todayKey } from "@/lib/utils";
 
 type Message = { role: "user" | "assistant"; content: string };
+
+/** Ошибка виджета не должна заменять весь дневник страницей ошибки. */
+export class FoodAssistantBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return <div className="mt-4 rounded-2xl bg-card p-4 text-sm" role="alert">
+        Не удалось открыть ассистента. <button className="text-primary underline" onClick={() => this.setState({ failed: false })}>Попробовать снова</button>
+      </div>;
+    }
+    return this.props.children;
+  }
+}
 
 export function FoodAssistant({ onClose }: { onClose: () => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -12,7 +33,7 @@ export function FoodAssistant({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   async function ask(history: Message[]) {
     setLoading(true);
@@ -39,7 +60,9 @@ export function FoodAssistant({ onClose }: { onClose: () => void }) {
     void ask([]);
   }, []);
 
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), [messages]);
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [messages]);
 
   function send() {
     const content = draft.trim();
@@ -57,12 +80,11 @@ export function FoodAssistant({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} aria-label="Закрыть ассистента" className="rounded-full p-2 hover:bg-muted"><X className="h-4 w-4" /></button>
       </div>
       <p className="mb-3 text-xs text-muted-foreground">Советы примерные. Ассистент учитывает сегодняшний дневник и ваши нормы.</p>
-      <div className="max-h-80 space-y-3 overflow-y-auto text-sm" aria-live="polite">
+      <div ref={listRef} className="max-h-80 space-y-3 overflow-y-auto text-sm" aria-live="polite">
         {messages.map((message, index) => (
           <p key={index} className={`whitespace-pre-wrap rounded-xl p-3 ${message.role === "user" ? "ml-7 bg-primary-soft" : "mr-4 bg-muted"}`}>{message.content}</p>
         ))}
         {loading && <p className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Думаю над советом…</p>}
-        <div ref={endRef} />
       </div>
       {error && <p role="alert" className="mt-2 text-sm text-danger">{error} <button onClick={() => void ask(messages)} className="underline">Повторить</button></p>}
       <div className="mt-3 flex gap-2">
