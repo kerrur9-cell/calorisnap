@@ -16,6 +16,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/setup", request.url));
   }
 
+  // Public legal page needs neither a session refresh nor a network auth call.
+  if (pathname === "/privacy") return NextResponse.next();
+
   const { response, user } = await updateSession(request);
 
   const isPublic = PUBLIC_PATHS.some(

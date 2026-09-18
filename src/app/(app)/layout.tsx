@@ -1,7 +1,8 @@
 import { TabBar } from "@/components/app/TabBar";
 import { ThemeSync } from "@/components/app/ThemeSync";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import type { Profile } from "@/types/database";
 import { redirect } from "next/navigation";
 
 /**
@@ -13,15 +14,17 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   if (!isSupabaseConfigured()) redirect("/setup");
-  const user = await getUser();
-  if (!user) redirect("/login");
-
-  // Проверяем, прошёл ли пользователь онбординг
   const supabase = await createClient();
+  // Middleware has already verified the session for this page request.
+  // The profile read remains protected by Supabase RLS.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) redirect("/login");
+
+  // Reuse the same profile on the client instead of fetching it a second time.
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("onboarding_completed")
-    .eq("id", user.id)
+    .select("*")
+    .eq("id", session.user.id)
     .single();
   if (error) throw new Error("Не удалось загрузить профиль");
 
@@ -32,7 +35,7 @@ export default async function AppLayout({
 
   return (
     <div className="mx-auto min-h-dvh max-w-md">
-      <ThemeSync />
+      <ThemeSync initialProfile={profile as Profile} />
       {/* Один скролл-контейнер с отступом под таб-бар */}
       <div className="pb-24">
         {children}

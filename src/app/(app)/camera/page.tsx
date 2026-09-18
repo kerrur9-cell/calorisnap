@@ -56,7 +56,14 @@ function CameraFlow() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [retryCountdown, setRetryCountdown] = useState(0);
   const [consent, setConsent] = useState(false);
+
+  useEffect(() => {
+    if (stage !== "error" || retryCountdown === 0) return;
+    const timer = window.setTimeout(() => setRetryCountdown((seconds) => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [stage, retryCountdown]);
 
   async function handleCapture(next: PhotoInput) {
     if (!consent) return;
@@ -110,6 +117,7 @@ function CameraFlow() {
       setStage("result");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка анализа");
+      setRetryCountdown(3);
       setStage("error");
     }
   }
@@ -260,12 +268,19 @@ function CameraFlow() {
         <div className="flex flex-col items-center gap-4 rounded-3xl bg-card p-8 text-center">
           <AlertTriangle className="h-10 w-10 text-warning" />
           <p className="text-sm">{error}</p>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={() => photo && handleCapture(photo)}
+              disabled={!photo || retryCountdown > 0}
+              className="rounded-full bg-primary px-5 py-2.5 text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {retryCountdown > 0 ? `Повторить это фото через ${retryCountdown} с` : "Отправить это фото ещё раз"}
+            </button>
             <button
               onClick={() => setStage("capture")}
-              className="rounded-full bg-primary px-5 py-2.5 text-sm text-primary-foreground"
+              className="rounded-full bg-muted px-5 py-2.5 text-sm"
             >
-              Попробовать ещё
+              Выбрать другое фото
             </button>
             <Link
               href={{ pathname: "/foods", query: { meal: mealType } }}

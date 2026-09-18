@@ -10,7 +10,7 @@ import type { Profile } from "@/types/database";
  * после сохранения норм вызывайте invalidateProfiles().
  */
 
-export function useProfile() {
+export function useProfile(initialProfile?: Profile) {
   return useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
@@ -23,6 +23,7 @@ export function useProfile() {
       return data as Profile;
     },
     staleTime: 5 * 60 * 1000,
+    initialData: initialProfile,
     retry: 1,
   });
 }

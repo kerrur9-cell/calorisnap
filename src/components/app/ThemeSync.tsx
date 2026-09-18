@@ -1,9 +1,10 @@
 "use client";
 import { useEffect } from "react";
 import { useProfile } from "@/hooks/useProfile";
+import type { Profile } from "@/types/database";
 
-export function ThemeSync() {
-  const { data } = useProfile();
+export function ThemeSync({ initialProfile }: { initialProfile: Profile }) {
+  const { data } = useProfile(initialProfile);
   const theme = data?.theme ?? "auto";
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
