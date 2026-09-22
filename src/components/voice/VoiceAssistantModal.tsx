@@ -1,7 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, X, Loader2, Sparkles, Check, ArrowRight, Volume2, Radio, Square } from "lucide-react";
+import {
+  Mic,
+  X,
+  Loader2,
+  Sparkles,
+  Check,
+  ArrowRight,
+  Volume2,
+  VolumeX,
+  Radio,
+  Square,
+  AlertCircle,
+  RotateCcw,
+  Lightbulb,
+} from "lucide-react";
 import { classifyVoiceIntent, answerVoiceQuery, type VoiceQueryResult } from "@/lib/voice/intent";
 import type { DayTotals, MacroTargets } from "@/lib/nutrition/macros";
 import type { MealType } from "@/types/database";
@@ -45,11 +59,16 @@ export function VoiceAssistantModal({
   const [transcript, setTranscript] = useState("");
   const [infoAnswer, setInfoAnswer] = useState<VoiceQueryResult | null>(null);
   const [parsedItems, setParsedItems] = useState<ParsedFoodItem[] | null>(null);
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [aiTips, setAiTips] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [selectedMealType, setSelectedMealType] = useState<MealType>("snack");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const inputRef = useRef<HTMLInputElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -58,7 +77,14 @@ export function VoiceAssistantModal({
   const streamRef = useRef<MediaStream | null>(null);
   const isStartingRef = useRef(false);
 
-  const cleanupAudio = () => {
+  const cleanupAudioHardware = () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+    }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -83,53 +109,46 @@ export function VoiceAssistantModal({
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-    setIsListening(false);
-    setRecordingSeconds(0);
     isStartingRef.current = false;
   };
 
   const handleClose = () => {
-    cleanupAudio();
+    cleanupAudioHardware();
+    setIsListening(false);
+    setIsSpeaking(false);
+    setRecordingSeconds(0);
     setTranscript("");
     setInfoAnswer(null);
     setParsedItems(null);
+    setAiResponse(null);
+    setAiTips(null);
+    setStatus(null);
     setError(null);
     onClose();
   };
 
-  // Очистка при закрытии
+  // Очистка аппаратных ресурсов при размонтировании
   useEffect(() => {
-    if (!isOpen) {
-      cleanupAudio();
-    }
     return () => {
-      cleanupAudio();
+      cleanupAudioHardware();
     };
-  }, [isOpen]);
+  }, []);
 
   // Таймер длительности записи
   useEffect(() => {
-    if (isListening) {
-      setRecordingSeconds(0);
-      timerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => {
-          if (prev >= 20) {
-            return prev;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }
+    if (!isListening) return;
+
+    const timer = setInterval(() => {
+      setRecordingSeconds((prev) => {
+        if (prev >= 20) {
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      clearInterval(timer);
     };
   }, [isListening]);
 
@@ -148,6 +167,9 @@ export function VoiceAssistantModal({
     setError(null);
     setInfoAnswer(null);
     setParsedItems(null);
+    setAiResponse(null);
+    setAiTips(null);
+    setStatus(null);
     audioChunksRef.current = [];
     setRecordingSeconds(0);
 
@@ -181,7 +203,9 @@ export function VoiceAssistantModal({
 
       recorder.onerror = (e) => {
         console.error("MediaRecorder error:", e);
-        cleanupAudio();
+        cleanupAudioHardware();
+        setIsListening(false);
+        setRecordingSeconds(0);
         setIsProcessing(false);
       };
 
@@ -262,8 +286,10 @@ export function VoiceAssistantModal({
     setIsListening(false);
 
     if (isCancel) {
-      cleanupAudio();
+      cleanupAudioHardware();
+      setIsListening(false);
       setIsProcessing(false);
+      setRecordingSeconds(0);
       return;
     }
 
@@ -274,23 +300,39 @@ export function VoiceAssistantModal({
         rec.stop();
       } catch (err) {
         console.error("Error stopping recorder:", err);
-        cleanupAudio();
+        cleanupAudioHardware();
         setIsProcessing(false);
       }
     } else {
-      cleanupAudio();
+      cleanupAudioHardware();
       setIsProcessing(false);
     }
   }
 
   // Озвучивание ответа
   function speakText(text: string) {
-    if ("speechSynthesis" in window) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "ru-RU";
       utterance.rate = 1.05;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
       window.speechSynthesis.speak(utterance);
+    } catch {
+      setIsSpeaking(false);
+    }
+  }
+
+  function toggleSpeaking(text: string) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    } else {
+      speakText(text);
     }
   }
 
@@ -298,6 +340,20 @@ export function VoiceAssistantModal({
   async function processRecordedAudio(blob: Blob) {
     setIsProcessing(true);
     setError(null);
+    setAiResponse(null);
+    setAiTips(null);
+    setStatus(null);
+
+    // Если аудио слишком маленькое (< 500 байт), значит запись не состоялась
+    if (blob.size < 500) {
+      setIsProcessing(false);
+      setIsListening(false);
+      setError("Запись слишком короткая или микрофон не уловил звук.");
+      setAiResponse(
+        "Похоже, микрофон записал тишину. Нажмите кнопку записи, назовите блюда (например: «2 яйца и тост») и нажмите «Завершить запись»."
+      );
+      return;
+    }
 
     // Если Web Speech уже распознал информационный запрос
     if (transcript.trim()) {
@@ -341,8 +397,17 @@ export function VoiceAssistantModal({
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Не удалось распознать голос");
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const errorMsg = data?.error ?? "Не удалось распознать запись";
+        setError(errorMsg);
+        if (data?.aiResponse) {
+          setAiResponse(data.aiResponse);
+          speakText(data.aiResponse);
+        }
+        return;
+      }
 
       if (data.transcript) {
         setTranscript(data.transcript);
@@ -358,17 +423,30 @@ export function VoiceAssistantModal({
           });
           setInfoAnswer(answer);
           speakText(answer.answerText);
-          setIsProcessing(false);
           return;
         }
       }
 
+      setStatus(data.status ?? "success");
       setParsedItems(data.items ?? []);
+
+      if (data.aiResponse) {
+        setAiResponse(data.aiResponse);
+        speakText(data.aiResponse);
+      }
+
+      if (data.tips) {
+        setAiTips(data.tips);
+      }
+
       if (data.suggestedMealType) {
         setSelectedMealType(data.suggestedMealType);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось распознать запись");
+      setAiResponse(
+        "Произошла ошибка при обработке звука. Попробуйте повторить запись или введите продукты текстом в поле ниже."
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -377,11 +455,16 @@ export function VoiceAssistantModal({
   // Обработка текстовой фразы (ручной ввод)
   async function handleProcessPhrase(text: string) {
     if (!text.trim()) return;
-    cleanupAudio();
+    cleanupAudioHardware();
+    setIsListening(false);
+    setRecordingSeconds(0);
     setIsProcessing(true);
     setError(null);
     setInfoAnswer(null);
     setParsedItems(null);
+    setAiResponse(null);
+    setAiTips(null);
+    setStatus(null);
 
     const intent = classifyVoiceIntent(text);
 
@@ -407,15 +490,35 @@ export function VoiceAssistantModal({
         body: JSON.stringify({ transcript: text }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Не удалось разобрать блюда");
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const errorMsg = data?.error ?? "Не удалось разобрать блюда";
+        setError(errorMsg);
+        if (data?.aiResponse) {
+          setAiResponse(data.aiResponse);
+          speakText(data.aiResponse);
+        }
+        return;
+      }
 
+      setStatus(data.status ?? "success");
       setParsedItems(data.items ?? []);
+
+      if (data.aiResponse) {
+        setAiResponse(data.aiResponse);
+        speakText(data.aiResponse);
+      }
+
+      if (data.tips) {
+        setAiTips(data.tips);
+      }
+
       if (data.suggestedMealType) {
         setSelectedMealType(data.suggestedMealType);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось распознать блюда");
+      setAiResponse("Не удалось обработать запрос. Пожалуйста, проверьте подключение к сети или повторите попытку.");
     } finally {
       setIsProcessing(false);
     }
@@ -555,6 +658,7 @@ export function VoiceAssistantModal({
         {/* Поле текста / транскрипта */}
         <div className="rounded-2xl border border-border/60 bg-muted/20 p-3">
           <input
+            ref={inputRef}
             type="text"
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
@@ -578,13 +682,126 @@ export function VoiceAssistantModal({
           )}
         </div>
 
+        {/* Информативная плашка ошибки с кнопками быстрого действия */}
         {error && (
-          <div className="rounded-xl bg-danger/10 p-2.5 text-xs text-danger font-medium">
-            {error}
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 space-y-2.5 animate-in fade-in duration-200">
+            <div className="flex items-start gap-2.5">
+              <div className="rounded-full bg-red-500/20 p-1.5 text-red-500 shrink-0 mt-0.5">
+                <AlertCircle className="h-4 w-4" />
+              </div>
+              <div className="flex-1 space-y-0.5">
+                <div className="text-xs font-bold text-red-600 dark:text-red-400">
+                  Что-то пошло не так
+                </div>
+                <p className="text-xs text-foreground/90 font-medium leading-relaxed">
+                  {error}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1 border-t border-red-500/20">
+              <button
+                onClick={() => startListening()}
+                className="flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-1 text-xs font-bold text-white shadow-xs hover:bg-red-600 active:scale-95 transition-colors"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Повторить запись
+              </button>
+              <button
+                onClick={() => {
+                  inputRef.current?.focus();
+                }}
+                className="rounded-lg bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/80 transition-colors"
+              >
+                Ввести текстом
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Ответ на информационный запрос */}
+        {/* Умный ответ / комментарий нейросети */}
+        {aiResponse && (
+          <div className="space-y-2.5 rounded-2xl border border-primary/25 bg-primary-soft/40 p-4 shadow-xs animate-in fade-in duration-200">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-primary/20 p-1 text-primary">
+                  <Sparkles className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                  {status === "question_answered"
+                    ? "Ответ AI-нутрициолога"
+                    : status === "not_food"
+                    ? "Подсказка CaloriSnap"
+                    : status === "clarification_needed"
+                    ? "Уточнение порций"
+                    : "AI-ассистент"}
+                </span>
+              </div>
+              <button
+                onClick={() => toggleSpeaking(aiResponse)}
+                className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                  isSpeaking
+                    ? "bg-primary text-primary-foreground animate-pulse"
+                    : "bg-primary/10 text-primary hover:bg-primary/20"
+                }`}
+                title={isSpeaking ? "Остановить озвучку" : "Озвучить ответ"}
+              >
+                {isSpeaking ? (
+                  <>
+                    <VolumeX className="h-3.5 w-3.5" />
+                    <span>Стоп</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="h-3.5 w-3.5" />
+                    <span>Озвучить</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <p className="text-xs sm:text-sm font-medium leading-relaxed text-foreground">
+              {aiResponse}
+            </p>
+
+            {aiTips && (
+              <div className="flex items-start gap-1.5 rounded-xl bg-background/70 p-2 text-[11px] text-muted-foreground border border-border/40">
+                <Lightbulb className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                <span>{aiTips}</span>
+              </div>
+            )}
+
+            {/* Быстрые примеры для пробы, если еда ещё не распознана */}
+            {(!parsedItems || parsedItems.length === 0) && (
+              <div className="pt-2 border-t border-primary/15 space-y-1.5">
+                <div className="text-[11px] font-semibold text-muted-foreground">
+                  Попробуйте нажать на пример:
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    "2 яйца и тост с авокадо",
+                    "Сколько калорий в банане?",
+                    "Овсянка 200г с мёдом",
+                    "Что лучше съесть на ужин?",
+                  ].map((sample) => (
+                    <button
+                      key={sample}
+                      onClick={() => {
+                        setTranscript(sample);
+                        handleProcessPhrase(sample);
+                      }}
+                      className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-[11px] font-medium text-foreground hover:border-primary hover:text-primary transition-colors active:scale-95"
+                    >
+                      «{sample}»
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ответ на локальный детерминированный информационный запрос */}
         {infoAnswer && (
           <div className="space-y-3 rounded-2xl bg-primary-soft/50 p-4 border border-primary/20">
             <div className="flex items-start justify-between gap-2">
