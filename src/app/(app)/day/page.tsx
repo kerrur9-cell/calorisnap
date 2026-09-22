@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator, ChevronDown, X } from "lucide-react";
 import { useDayLog, mealTypeMeta, MEAL_TYPES } from "@/hooks/useDayLog";
 import { useProfile } from "@/hooks/useProfile";
 import { CalorieRing } from "@/components/day/CalorieRing";
@@ -10,6 +10,8 @@ import { MacroBar } from "@/components/day/MacroBar";
 import { MealCard } from "@/components/day/MealCard";
 import { todayKey, addDays } from "@/lib/utils";
 import { FoodAssistant, FoodAssistantBoundary } from "@/components/day/FoodAssistant";
+import { sumTotals } from "@/lib/nutrition/macros";
+import type { MealType, MealWithItems } from "@/types/database";
 
 /**
  * Главный экран: день пользователя.
@@ -116,14 +118,7 @@ export default function DayPage() {
                   />
                 );
               }
-              return (
-                <Fragment key={mt.value}>
-                  {meals.map((meal) => (
-                    <MealCard key={meal.id} meal={meal} dateKey={dateKey} />
-                  ))}
-                  {isToday && <MealAddActions mealType={mt.value} />}
-                </Fragment>
-              );
+              return <MealGroup key={mt.value} meals={meals} dateKey={dateKey} mealType={mt.value} isToday={isToday} />;
             })}
           </section>
 
@@ -136,6 +131,21 @@ export default function DayPage() {
       )}
     </main>
   );
+}
+
+/** Одна компактная категория, детали открываются отдельным полноэкранным листом. */
+function MealGroup({ meals, dateKey, mealType, isToday }: { meals: MealWithItems[]; dateKey: string; mealType: MealType; isToday: boolean }) {
+  const [open, setOpen] = useState(false);
+  const meta = mealTypeMeta(mealType);
+  const totals = sumTotals(meals.flatMap((meal) => meal.meal_items));
+  return <>
+    <button onClick={() => setOpen(true)} className="flex w-full items-center gap-3 rounded-2xl bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted" aria-label={`Открыть ${meta.label}`}>
+      <span className="text-2xl">{meta.emoji}</span><span className="min-w-0 flex-1"><span className="block font-semibold">{meta.label}</span><span className="block text-xs text-muted-foreground">{meals.length} {meals.length === 1 ? "блюдо" : "блюда"} · {Math.round(totals.calories)} ккал</span></span><ChevronDown className="h-5 w-5 text-muted-foreground" />
+    </button>
+    {open && <div className="fixed inset-0 z-50 overflow-y-auto bg-background" role="dialog" aria-modal="true" aria-label={meta.label}>
+      <main className="mx-auto min-h-dvh max-w-md px-4 pb-10 pt-6"><header className="mb-5 flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-2xl">{meta.emoji}</span><div><h2 className="text-xl font-bold">{meta.label}</h2><p className="text-xs text-muted-foreground">{Math.round(totals.calories)} ккал · Б {totals.proteinG} · Ж {totals.fatG} · У {totals.carbsG}</p></div></div><button onClick={() => setOpen(false)} className="rounded-full bg-muted p-2" aria-label="Закрыть"><X className="h-5 w-5" /></button></header><section className="space-y-3">{meals.map((meal) => <MealCard key={meal.id} meal={meal} dateKey={dateKey} />)}</section>{isToday && <MealAddActions mealType={mealType} />}</main>
+    </div>}
+  </>;
 }
 
 /** Пустая карточка приёма пищи с действиями добавить */
