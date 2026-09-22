@@ -19,6 +19,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { useDayLog } from "@/hooks/useDayLog";
 import { todayKey } from "@/lib/utils";
 import dynamic from "next/dynamic";
+import { AccentColorPicker } from "@/components/app/AccentColorPicker";
 
 const VoiceAssistantModal = dynamic(
   () =>
@@ -64,13 +65,15 @@ export default function HubPage() {
         <div className="flex items-center gap-2">
           <Sparkles className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
-            Инструменты
+            Хаб
           </h1>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Все интеллектуальные инструменты в одном месте
         </p>
       </header>
+
+      <AccentColorPicker />
 
       {/* Быстрые инструменты */}
       <section className="mb-5 grid grid-cols-2 gap-3">

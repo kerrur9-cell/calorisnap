@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/day", label: "День", icon: UtensilsCrossed },
   { href: "/stats", label: "Статистика", icon: BarChart3 },
-  { href: "/hub", label: "Ещё", icon: Sparkles },
+  { href: "/hub", label: "Хаб", icon: Sparkles },
   { href: "/profile", label: "Профиль", icon: User },
 ];
 
