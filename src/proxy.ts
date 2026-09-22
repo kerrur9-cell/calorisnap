@@ -7,7 +7,7 @@ const PUBLIC_PATHS = ["/login", "/auth", "/privacy"];
 // Netlify deploys edge middleware natively. In Next 16 `proxy.ts` is always
 // Node.js runtime, while the legacy `middleware.ts` convention remains the
 // supported way to emit an Edge-compatible request guard.
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Пока Supabase не настроен — показываем экран с инструкцией (/setup).
