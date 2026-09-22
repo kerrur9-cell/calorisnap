@@ -37,7 +37,7 @@ const responseFormat = {
 function previousRecommendationNames(messages: z.infer<typeof requestSchema>["messages"]) {
   return messages
     .filter((message) => message.role === "assistant")
-    .flatMap((message) => message.content.match(/РЕКОМЕНДОВАНО:\s*([^\n]+)/gu)?.[1].split("|") ?? [])
+    .flatMap((message) => message.content.match(/РЕКОМЕНДОВАНО:\s*([^\n]+)/u)?.[1]?.split("|") ?? [])
     .map((name) => name.trim())
     .filter(Boolean);
 }
