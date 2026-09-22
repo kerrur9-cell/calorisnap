@@ -58,7 +58,6 @@ function CameraFlow() {
   const [retrying, setRetrying] = useState(false);
   const [analysisAttempt, setAnalysisAttempt] = useState<"secondary" | "tertiary" | null>(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
-  const [consent, setConsent] = useState(false);
 
   useEffect(() => {
     if (stage !== "error" || retryCountdown === 0) return;
@@ -67,7 +66,6 @@ function CameraFlow() {
   }, [stage, retryCountdown]);
 
   async function handleCapture(next: PhotoInput) {
-    if (!consent) return;
     if (!next.dataBase64) {
       setPhoto(null);
       return;
@@ -252,17 +250,11 @@ function CameraFlow() {
       </header>
 
       {stage === "capture" && (
-        <div className="space-y-4">
-        <label className="flex gap-3 text-sm"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-          <span>Разрешаю отправить выбранное фото и вес в Google Gemini для анализа. <Link href="/privacy" className="underline">Обработка данных</Link></span>
-        </label>
-        {consent &&
         <CaptureStage
           totalWeight={totalWeight}
           setTotalWeight={setTotalWeight}
           onCapture={handleCapture}
         />
-        }</div>
       )}
 
       {stage === "analyzing" && <AnalyzingStage retrying={retrying} attempt={analysisAttempt} />}
