@@ -112,7 +112,7 @@ export async function POST(request: Request) {
   }
 
   if (groqKey) {
-    const models = [process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile", "openai/gpt-oss-20b"];
+    const models = [process.env.GROQ_CHAT_MODEL ?? "openai/gpt-oss-20b", "openai/gpt-oss-20b"];
     for (const model of [...new Set(models)]) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
