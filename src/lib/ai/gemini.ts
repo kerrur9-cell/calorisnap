@@ -195,17 +195,24 @@ export interface GeminiJsonOptions<T = unknown> {
   maxTokens?: number;
 }
 
+const JSON_CANDIDATE_MODELS = [
+  "gemini-flash-lite-latest",
+  "gemini-3.5-flash-lite",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+];
+
 /**
  * Универсальная генерация структурированного JSON через Gemini.
- * Автоматически использует основной ключ/модель, делает fallback при сбоях,
- * снимает markdown ```json и проверяет Zod схему.
+ * Автоматически перебирает быстрые надёжные модели (flash-lite -> flash)
+ * и ключи (основной -> запасной), снимает markdown и валидирует Zod схему.
  */
 export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions<T>): Promise<T> {
   const primaryKey = process.env.GEMINI_API_KEY;
   const fallbackKey = process.env.GEMINI_FALLBACK_API_KEY;
-  const apiKey = primaryKey || fallbackKey;
+  const keys = [primaryKey, fallbackKey].filter((k): k is string => Boolean(k && k.trim()));
 
-  if (!apiKey) {
+  if (keys.length === 0) {
     throw new Error("AI не настроен: отсутствует GEMINI_API_KEY");
   }
 
@@ -233,40 +240,41 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
     };
   }
 
-  let res = await callGemini(body, primaryKey ?? apiKey, GEMINI_PRIMARY_MODEL);
+  let lastError: Error | null = null;
 
-  if (!res.ok && (fallbackKey || GEMINI_FALLBACK_MODEL !== GEMINI_PRIMARY_MODEL)) {
-    res = await callGemini(
-      body,
-      fallbackKey ?? apiKey,
-      GEMINI_FALLBACK_MODEL
-    );
-  }
+  for (const model of JSON_CANDIDATE_MODELS) {
+    for (const key of keys) {
+      try {
+        const res = await callGemini(body, key, model);
+        if (!res.ok) {
+          lastError = new Error(res.message);
+          continue;
+        }
 
-  if (!res.ok) {
-    throw new Error(res.message);
-  }
+        const cleaned = res.text
+          .replace(/^```(?:json)?\s*/i, "")
+          .replace(/```$/i, "")
+          .trim();
 
-  const cleaned = res.text
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/```$/i, "")
-    .trim();
+        const parsed = JSON.parse(cleaned);
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (err) {
-    throw new Error(`Модель вернула невалидный JSON: ${err instanceof Error ? err.message : String(err)}`);
-  }
+        if (options.schema) {
+          const validated = options.schema.safeParse(parsed);
+          if (!validated.success) {
+            lastError = new Error(`Ответ модели не соответствует схеме: ${validated.error.message}`);
+            continue;
+          }
+          return validated.data;
+        }
 
-  if (options.schema) {
-    const validated = options.schema.safeParse(parsed);
-    if (!validated.success) {
-      throw new Error(`Ответ модели не соответствует схеме: ${validated.error.message}`);
+        return parsed as T;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+      }
     }
-    return validated.data;
   }
 
-  return parsed as T;
+  throw lastError ?? new Error("Не удалось получить ответ от AI");
 }
+
 

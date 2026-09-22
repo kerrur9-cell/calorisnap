@@ -147,33 +147,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Резервный рецепт без API ключа при сбое
-  const firstIng = body.ingredients[0] ?? "Продукты";
-  return NextResponse.json({
-    recipes: [
-      {
-        title: `Быстрое блюдо из ${firstIng}`,
-        description: "Простой рецепт на скорую руку с контролем калорий",
-        cookingTimeMinutes: 15,
-        difficulty: "easy",
-        ingredients: body.ingredients.slice(0, 3).map((ing, idx) => ({
-          name: ing,
-          weight_grams: 100,
-          calories: Math.round(calorieBudget / Math.min(body.ingredients.length, 3)),
-          protein_g: idx === 0 ? 15 : 4,
-          fat_g: 5,
-          carbs_g: 10,
-        })),
-        instructions: [
-          "Подготовьте и промойте ингредиенты.",
-          "Нарежьте удобными кусочками.",
-          "Обжарьте на сухой антипригарной сковороде или потушите с небольшим количеством воды до готовности.",
-        ],
-        totalCalories: calorieBudget,
-        totalProtein: 25,
-        totalFat: 12,
-        totalCarbs: 25,
-      },
-    ],
-  });
+  return NextResponse.json(
+    { error: "AI временно перегружен. Пожалуйста, попробуйте ещё раз через несколько секунд." },
+    { status: 503 }
+  );
 }

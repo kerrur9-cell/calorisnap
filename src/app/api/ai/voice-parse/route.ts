@@ -136,18 +136,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Безопасный fallback, если AI недоступен
-  return NextResponse.json({
-    suggestedMealType: body.defaultMealType ?? "snack",
-    items: [
-      {
-        name: body.transcript.slice(0, 50),
-        weight_grams: 100,
-        calories: 150,
-        protein_g: 5,
-        fat_g: 5,
-        carbs_g: 20,
-      },
-    ],
-  });
+  return NextResponse.json(
+    { error: "Не удалось точно распознать состав блюда. Попробуйте сказать ещё раз или добавьте через поиск." },
+    { status: 502 }
+  );
 }
+
