@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator, ChevronDown, Scale } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator, ChevronDown, Scale, Mic } from "lucide-react";
 import { useDayLog, mealTypeMeta, MEAL_TYPES } from "@/hooks/useDayLog";
 import { useProfile } from "@/hooks/useProfile";
 import { CalorieRing } from "@/components/day/CalorieRing";
@@ -15,6 +15,8 @@ import type { MealType, MealWithItems } from "@/types/database";
 import { useSmartAlerts } from "@/hooks/useSmartAlerts";
 import { SmartAlertBanner } from "@/components/day/SmartAlertBanner";
 import { MacroBalancer } from "@/components/day/MacroBalancer";
+import { GamificationBadge } from "@/components/app/GamificationBadge";
+import { VoiceAssistantModal } from "@/components/voice/VoiceAssistantModal";
 
 /**
  * Главный экран: день пользователя.
@@ -24,6 +26,7 @@ export default function DayPage() {
   const [dateKey, setDateKey] = useState(todayKey());
   const [showAssistant, setShowAssistant] = useState(false);
   const [showBalancer, setShowBalancer] = useState(false);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
   const isToday = dateKey === todayKey();
 
   const { data: day, isLoading, error } = useDayLog(dateKey);
@@ -45,7 +48,21 @@ export default function DayPage() {
   });
 
   return (
-    <main className="min-h-dvh bg-background px-4 pt-8">
+    <main className="min-h-dvh bg-background px-4 pt-6">
+      {/* Верхняя панель: Уровень/XP и Голосовой ассистент */}
+      <div className="mb-4 flex items-center justify-between">
+        <GamificationBadge />
+        <button
+          onClick={() => setShowVoiceModal(true)}
+          className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft/60 px-3.5 py-1.5 text-xs font-semibold text-primary shadow-xs transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
+          title="Голосовой ассистент"
+          aria-label="Голосовой ассистент"
+        >
+          <Mic className="h-3.5 w-3.5" />
+          <span>Голос</span>
+        </button>
+      </div>
+
       {/* Шапка с датой */}
       <header className="mb-6 flex items-center justify-between">
         <button
@@ -174,6 +191,28 @@ export default function DayPage() {
             dateKey={dateKey}
             isOpen={showBalancer}
             onClose={() => setShowBalancer(false)}
+          />
+
+          {/* Модальное окно Голосового ассистента */}
+          <VoiceAssistantModal
+            isOpen={showVoiceModal}
+            onClose={() => setShowVoiceModal(false)}
+            dateKey={dateKey}
+            consumedTotals={day?.totals ?? { calories: 0, proteinG: 0, fatG: 0, carbsG: 0 }}
+            targetCalories={targetCalories}
+            macroTargets={{
+              proteinG: macroTargets.protein,
+              fatG: macroTargets.fat,
+              carbsG: macroTargets.carbs,
+            }}
+            eatenFoodNames={[
+              ...new Set(
+                (day?.meals ?? []).flatMap((m) =>
+                  m.meal_items.map((i) => i.custom_food_name).filter((n): n is string => Boolean(n))
+                )
+              ),
+            ]}
+            onOpenBalancer={() => setShowBalancer(true)}
           />
         </>
       )}
