@@ -18,6 +18,10 @@ import { useProfile } from "@/hooks/useProfile";
 import { addDays, todayKey } from "@/lib/utils";
 import { WeightForecastChart } from "@/components/charts/WeightForecastChart";
 import { calculateTdee } from "@/lib/nutrition/tdee";
+import { SmartInsightsCard } from "@/components/stats/SmartInsightsCard";
+import { WeeklyReviewCard } from "@/components/stats/WeeklyReviewCard";
+import { ExperimentDashboard } from "@/components/experiments/ExperimentDashboard";
+import type { MealHistoryEntry } from "@/lib/nutrition/personalization";
 
 export default function StatsPage() {
   return (
@@ -44,7 +48,7 @@ function StatsFlow() {
     queryKey: ["stats", period, days[0]],
     queryFn: async () => {
       const supabase = createClient();
-      const [stats, weights, water] = await Promise.all([
+      const [stats, weights, water, meals] = await Promise.all([
         supabase
           .from("daily_stats")
           .select("*")
@@ -62,11 +66,22 @@ function StatsFlow() {
           .select("amount_ml, entry_date")
           .gte("entry_date", days[0])
           .lte("entry_date", days[days.length - 1]),
+        supabase
+          .from("meal_entries")
+          .select("id, meal_type, entry_date, logged_at, meal_items(id, custom_food_name, weight_grams, calories, protein_g, fat_g, carbs_g)")
+          .gte("entry_date", days[0])
+          .lte("entry_date", days[days.length - 1]),
       ]);
       if (stats.error) throw stats.error;
       if (weights.error) throw weights.error;
       if (water.error) throw water.error;
-      return { stats: stats.data ?? [], weights: weights.data ?? [], water: water.data ?? [] };
+      if (meals.error) throw meals.error;
+      return {
+        stats: stats.data ?? [],
+        weights: weights.data ?? [],
+        water: water.data ?? [],
+        meals: (meals.data ?? []) as unknown as MealHistoryEntry[],
+      };
     },
   });
 
@@ -288,6 +303,65 @@ function StatsFlow() {
           tdee={userTdee}
           targetCalories={goal}
           targetWeightKg={profile?.target_weight_kg}
+        />
+      </div>
+
+      {/* Умные инсайты динамики тела */}
+      <div className="mt-6">
+        <SmartInsightsCard
+          weights={(calories?.weights ?? []).map((w) => ({
+            date: w.recorded_at!,
+            weightKg: Number(w.weight_kg),
+          }))}
+          nutritionHistory={(calories?.stats ?? []).map((s) => ({
+            date: s.entry_date!,
+            consumedCalories: Number(s.total_calories ?? 0),
+            targetCalories: goal,
+            carbsG: Number(s.total_carbs ?? 0),
+          }))}
+        />
+      </div>
+
+      {/* Еженедельный AI-разбор рациона */}
+      <div className="mt-6">
+        <WeeklyReviewCard
+          dailyStats={(calories?.stats ?? []).map((s) => ({
+            entry_date: s.entry_date!,
+            total_calories: Number(s.total_calories ?? 0),
+            total_protein: Number(s.total_protein ?? 0),
+            total_fat: Number(s.total_fat ?? 0),
+            total_carbs: Number(s.total_carbs ?? 0),
+          }))}
+          meals={calories?.meals ?? []}
+          targetCalories={goal}
+          targetProteinG={profile?.daily_protein_g ?? 120}
+        />
+      </div>
+
+      {/* Режим экспериментов (диеты и протоколы) */}
+      <div className="mt-6 mb-8">
+        <ExperimentDashboard
+          dayLogs={(calories?.stats ?? []).map((s) => ({
+            date: s.entry_date!,
+            totals: {
+              calories: Number(s.total_calories ?? 0),
+              proteinG: Number(s.total_protein ?? 0),
+              fatG: Number(s.total_fat ?? 0),
+              carbsG: Number(s.total_carbs ?? 0),
+            },
+            targets: {
+              proteinG: profile?.daily_protein_g ?? 120,
+              fatG: profile?.daily_fat_g ?? 70,
+              carbsG: profile?.daily_carbs_g ?? 200,
+            },
+            targetCalories: goal,
+            meals: {
+              entry_date: s.entry_date!,
+              meal_type: "lunch",
+              meal_items: [],
+            },
+          }))}
+          currentWeightKg={profile?.current_weight_kg ?? undefined}
         />
       </div>
     </main>

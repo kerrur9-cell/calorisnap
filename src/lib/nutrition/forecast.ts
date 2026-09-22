@@ -47,6 +47,24 @@ const EMA_ALPHA = 0.2; // Стандарт фильтрации водных к�
 const NATURAL_FLUCTUATION_KG = 0.7; // Естественный разброс суточных колебаний
 
 /**
+ * Экспоненциальное скользящее среднее для числового ряда.
+ */
+export function calculateEma(values: number[], alpha = EMA_ALPHA): number[] {
+  if (values.length === 0) return [];
+  const result: number[] = [];
+  let current = values[0];
+  for (let i = 0; i < values.length; i++) {
+    if (i === 0) {
+      current = values[i];
+    } else {
+      current = alpha * values[i] + (1 - alpha) * current;
+    }
+    result.push(Math.round(current * 100) / 100);
+  }
+  return result;
+}
+
+/**
  * Расчёт экспоненциального скользящего среднего (EMA) для устранения водных колебаний.
  */
 export function calculateWeightTrend(history: WeightDataPoint[]): TrendPoint[] {
@@ -54,26 +72,14 @@ export function calculateWeightTrend(history: WeightDataPoint[]): TrendPoint[] {
 
   // Сортировка по возрастанию даты
   const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
-  const result: TrendPoint[] = [];
+  const rawWeights = sorted.map((p) => p.weightKg);
+  const emaWeights = calculateEma(rawWeights, EMA_ALPHA);
 
-  let currentEma = sorted[0].weightKg;
-
-  for (let i = 0; i < sorted.length; i++) {
-    const point = sorted[i];
-    if (i === 0) {
-      currentEma = point.weightKg;
-    } else {
-      currentEma = EMA_ALPHA * point.weightKg + (1 - EMA_ALPHA) * currentEma;
-    }
-
-    result.push({
-      date: point.date,
-      actualWeight: point.weightKg,
-      trendWeight: Math.round(currentEma * 100) / 100,
-    });
-  }
-
-  return result;
+  return sorted.map((point, idx) => ({
+    date: point.date,
+    actualWeight: point.weightKg,
+    trendWeight: emaWeights[idx],
+  }));
 }
 
 /**
