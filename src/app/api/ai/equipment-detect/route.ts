@@ -12,17 +12,17 @@ const equipmentDetectRequestSchema = z.object({
 });
 
 const equipmentDetectResponseSchema = z.object({
-  machineName: z.string(),
-  machineNameEn: z.string().optional(),
-  category: z.enum(["cardio", "strength", "machine", "bodyweight"]),
-  targetMuscles: z.array(z.string()),
-  recommendedSets: z.number(),
-  recommendedReps: z.number(),
-  recommendedMinutes: z.number().optional(),
-  caloriesPerSet: z.number(),
-  caloriesPerMinute: z.number().optional(),
-  techniqueTip: z.string(),
-  safetyTip: z.string(),
+  machineName: z.string().default("Тренажёр"),
+  machineNameEn: z.string().optional().nullable(),
+  category: z.enum(["cardio", "strength", "machine", "bodyweight"]).catch("machine"),
+  targetMuscles: z.array(z.string()).default([]),
+  recommendedSets: z.number().default(3),
+  recommendedReps: z.number().default(12),
+  recommendedMinutes: z.number().optional().nullable(),
+  caloriesPerSet: z.number().default(6),
+  caloriesPerMinute: z.number().optional().nullable(),
+  techniqueTip: z.string().default("Выполняйте движение плавно, сохраняя правильную осанку."),
+  safetyTip: z.string().default("Отрегулируйте упоры и сиденье перед началом упражнения."),
 });
 
 export async function POST(req: Request) {

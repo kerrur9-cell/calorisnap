@@ -13,15 +13,15 @@ const workoutParseRequestSchema = z.object({
 });
 
 const workoutResponseSchema = z.object({
-  exerciseName: z.string(),
-  category: z.enum(["cardio", "strength", "machine", "bodyweight"]),
-  durationMinutes: z.number().optional(),
-  sets: z.number().optional(),
-  reps: z.number().optional(),
-  weightKg: z.number().optional(),
-  caloriesBurned: z.number(),
-  targetMuscles: z.array(z.string()),
-  advice: z.string(),
+  exerciseName: z.string().default("Упражнение"),
+  category: z.enum(["cardio", "strength", "machine", "bodyweight"]).catch("machine"),
+  durationMinutes: z.number().optional().nullable(),
+  sets: z.number().optional().nullable(),
+  reps: z.number().optional().nullable(),
+  weightKg: z.number().optional().nullable(),
+  caloriesBurned: z.number().default(30),
+  targetMuscles: z.array(z.string()).default([]),
+  advice: z.string().default("Отличная работа! Продолжайте в том же духе."),
 });
 
 export async function POST(req: Request) {

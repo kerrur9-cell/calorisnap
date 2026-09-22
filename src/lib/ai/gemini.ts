@@ -75,9 +75,9 @@ async function callGemini(
         return { ok: false, status: 200, message: "Gemini вернул пустой ответ" };
       }
       return { ok: true, text: rawText };
-    } catch {
-      // A network issue may be isolated to the current model endpoint.
-      return { ok: false, status: 0, message: "Gemini не ответил по сети" };
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return { ok: false, status: 0, message: `Gemini не ответил: ${errMsg}` };
     }
 }
 
@@ -235,7 +235,7 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
     throw new Error("AI не настроен: отсутствует GEMINI_API_KEY");
   }
 
-  const contents = options.contents && options.contents.length > 0
+  const rawContents = options.contents && options.contents.length > 0
     ? options.contents
     : [
         {
@@ -243,6 +243,24 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
           parts: [{ text: options.prompt ?? "" }],
         },
       ];
+
+  // Нормализуем формат parts: Google Gemini REST API требует строго snake_case (inline_data, mime_type)
+  const contents = rawContents.map((c) => ({
+    role: c.role,
+    parts: c.parts.map((p) => {
+      const part: Record<string, unknown> = {};
+      if (p.text !== undefined) part.text = p.text;
+      const rawImg = (p as Record<string, unknown>).inline_data || (p as Record<string, unknown>).inlineData;
+      if (rawImg && typeof rawImg === "object") {
+        const imgObj = rawImg as Record<string, unknown>;
+        part.inline_data = {
+          mime_type: imgObj.mime_type || imgObj.mimeType || "image/jpeg",
+          data: imgObj.data,
+        };
+      }
+      return part;
+    }),
+  }));
 
   const body: Record<string, unknown> = {
     contents,
