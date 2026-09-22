@@ -21,6 +21,7 @@ export function MacroBar({
 }) {
   const percent = target > 0 ? (value / target) * 100 : 0;
   const over = percent > 100;
+  const barColor = over ? "var(--danger)" : `var(--${color})`;
 
   return (
     <div className="space-y-1">
@@ -37,13 +38,8 @@ export function MacroBar({
       </div>
       <div className="h-2.5 overflow-hidden rounded-full bg-muted/60">
         <div
-          className={cn(
-            "macro-glossy h-full rounded-full transition-all duration-700 ease-out shadow-xs",
-            color === "protein" && "bg-gradient-to-r from-protein/80 to-protein",
-            color === "fat" && "bg-gradient-to-r from-fat/80 to-fat",
-            color === "carbs" && "bg-gradient-to-r from-carbs/80 to-carbs",
-          )}
-          style={{ width: `${Math.min(percent, 100)}%` }}
+          className="macro-glossy h-full rounded-full shadow-xs transition-all duration-700 ease-out"
+          style={{ width: `${Math.min(percent, 100)}%`, background: `linear-gradient(to right, color-mix(in srgb, ${barColor} 80%, transparent), ${barColor})` }}
         />
       </div>
     </div>

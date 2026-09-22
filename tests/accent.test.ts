@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accentTokens, contrastRatio, normalizeHex } from "../src/lib/theme/accent";
+import { DEFAULT_COLOR_SETTINGS, accentTokens, contrastRatio, normalizeHex, parseColorSettings } from "../src/lib/theme/accent";
 
 describe("accent color tokens", () => {
   it("normalizes valid colors and rejects invalid input", () => {
@@ -16,5 +16,12 @@ describe("accent color tokens", () => {
 
   it("creates different soft shades for light and dark themes", () => {
     expect(accentTokens("#8b5cf6", false).soft).not.toBe(accentTokens("#8b5cf6", true).soft);
+  });
+
+  it("restores missing or invalid custom colors safely", () => {
+    const parsed = parseColorSettings('{"accent":"#ff2d87","protein":"broken","panels":"#123456"}');
+    expect(parsed.accent).toBe("#ff2d87");
+    expect(parsed.protein).toBe(DEFAULT_COLOR_SETTINGS.protein);
+    expect(parsed.panels).toBe("#123456");
   });
 });

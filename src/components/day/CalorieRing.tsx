@@ -1,7 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-
 /**
  * Кольцо калорий — центральный элемент экрана дня.
  * Анимируется при изменении значения.
@@ -25,11 +23,16 @@ export function CalorieRing({
 
   const overLimit = current > target;
   const isNearLimit = !overLimit && target - current < target * 0.15;
-  const glowColor = overLimit
-    ? "rgba(255, 59, 48, 0.45)"
+  const statusColor = overLimit
+    ? "var(--danger)"
     : isNearLimit
-      ? "rgba(255, 149, 0, 0.4)"
-      : "rgba(52, 199, 89, 0.4)";
+      ? "var(--warning)"
+      : "var(--calories)";
+  const statusSoft = overLimit
+    ? "var(--danger-soft)"
+    : isNearLimit
+      ? "var(--warning-soft)"
+      : "color-mix(in srgb, var(--calories) 16%, transparent)";
 
   return (
     <div
@@ -38,14 +41,8 @@ export function CalorieRing({
     >
       {/* Мягкое фоновое рассеянное свечение (Atmospheric Ring Glow) */}
       <div
-        className={cn(
-          "pointer-events-none absolute inset-6 rounded-full blur-2xl transition-all duration-700 -z-10",
-          overLimit
-            ? "bg-danger/15"
-            : isNearLimit
-              ? "bg-warning/15"
-              : "bg-primary/15",
-        )}
+        className="pointer-events-none absolute inset-6 -z-10 rounded-full blur-2xl transition-all duration-700"
+        style={{ backgroundColor: `color-mix(in srgb, ${statusColor} 18%, transparent)` }}
       />
 
       <svg
@@ -53,7 +50,7 @@ export function CalorieRing({
         height={size}
         className="-rotate-90 transform-gpu"
         style={{
-          filter: `drop-shadow(0 0 12px ${glowColor})`,
+          filter: `drop-shadow(0 0 12px color-mix(in srgb, ${statusColor} 45%, transparent))`,
           transition: "filter 0.7s ease",
         }}
       >
@@ -73,7 +70,7 @@ export function CalorieRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={overLimit ? "var(--danger)" : "var(--primary)"}
+          stroke={statusColor}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={circumference}
@@ -85,10 +82,8 @@ export function CalorieRing({
       {/* Центр */}
       <div className="absolute inset-0 flex flex-col items-center justify-center select-none">
         <span
-          className={cn(
-            "text-4xl font-black tracking-tight tabular-nums transition-transform duration-300",
-            overLimit && "text-danger",
-          )}
+          className="text-4xl font-black tracking-tight tabular-nums transition-colors duration-300"
+          style={{ color: overLimit || isNearLimit ? statusColor : "var(--foreground)" }}
         >
           {Math.round(current)}
         </span>
@@ -96,14 +91,8 @@ export function CalorieRing({
           из {target} ккал
         </span>
         <span
-          className={cn(
-            "mt-1.5 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-wide transition-all duration-500 border shadow-2xs",
-            overLimit
-              ? "bg-danger-soft border-danger/30 text-danger"
-              : isNearLimit
-                ? "bg-warning-soft border-warning/30 text-warning"
-                : "bg-primary-soft border-primary/30 text-primary",
-          )}
+          className="mt-1.5 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-wide shadow-2xs transition-all duration-500"
+          style={{ color: statusColor, backgroundColor: statusSoft, borderColor: `color-mix(in srgb, ${statusColor} 30%, transparent)` }}
         >
           {overLimit
             ? `+${Math.round(current - target)} ккал`

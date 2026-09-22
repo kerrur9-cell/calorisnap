@@ -20,6 +20,7 @@
   --primary: #34c759;
   --primary-foreground: #ffffff;
   --primary-soft: #e8f8ec;
+  --calories: #34c759;
   --water: #5ac8fa;
   --water-soft: #e6f5fd;
   --warning: #ff9500;
@@ -47,6 +48,7 @@
   --primary: #30d158;
   --primary-foreground: #04240d;
   --primary-soft: #12331d;
+  --calories: #30d158;
   --water: #64d2ff;
   --water-soft: #0f2b38;
   --warning: #ffa726;
@@ -383,4 +385,3 @@ body::-webkit-scrollbar {
 .stagger-3 { animation-delay: 120ms; }
 .stagger-4 { animation-delay: 160ms; }
 .stagger-5 { animation-delay: 200ms; }
-

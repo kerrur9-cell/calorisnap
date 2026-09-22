@@ -1,12 +1,39 @@
 export const DEFAULT_ACCENT = "#34c759";
 export const ACCENT_STORAGE_KEY = "calorisnap-accent";
+export const COLOR_SETTINGS_KEY = "calorisnap-colors-v1";
 
 export const ACCENT_PRESETS = [
   { name: "Зелёный", value: "#34c759" },
   { name: "Розовый", value: "#ff2d87" },
   { name: "Синий", value: "#3478f6" },
   { name: "Фиолетовый", value: "#8b5cf6" },
+  { name: "Оранжевый", value: "#ff9500" },
+  { name: "Красный", value: "#ff3b30" },
+  { name: "Бирюзовый", value: "#14b8a6" },
+  { name: "Графит", value: "#64748b" },
 ] as const;
+
+export type ColorSettings = {
+  accent: string;
+  calories: string;
+  protein: string;
+  fat: string;
+  carbs: string;
+  warning: string;
+  danger: string;
+  panels: string;
+};
+
+export const DEFAULT_COLOR_SETTINGS: ColorSettings = {
+  accent: DEFAULT_ACCENT,
+  calories: "#34c759",
+  protein: "#5ac8fa",
+  fat: "#ff9500",
+  carbs: "#34c759",
+  warning: "#ff9500",
+  danger: "#ff3b30",
+  panels: "#8e8e93",
+};
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -65,6 +92,36 @@ export function applyAccentColor(value: string, root: HTMLElement = document.doc
   root.style.setProperty("--primary", tokens.primary);
   root.style.setProperty("--primary-foreground", tokens.foreground);
   root.style.setProperty("--primary-soft", tokens.soft);
-  root.style.setProperty("--carbs", tokens.primary);
   return tokens;
+}
+
+export function parseColorSettings(raw: string | null, legacyAccent?: string | null): ColorSettings {
+  let source: Partial<ColorSettings> = {};
+  try {
+    source = raw ? JSON.parse(raw) as Partial<ColorSettings> : {};
+  } catch { /* Invalid local settings fall back to safe defaults. */ }
+  const result = { ...DEFAULT_COLOR_SETTINGS };
+  for (const key of Object.keys(result) as Array<keyof ColorSettings>) {
+    const normalized = normalizeHex(source[key] ?? "");
+    if (normalized) result[key] = normalized;
+  }
+  if (!source.accent) result.accent = normalizeHex(legacyAccent ?? "") ?? result.accent;
+  return result;
+}
+
+export function applyColorSettings(settings: ColorSettings, root: HTMLElement = document.documentElement) {
+  applyAccentColor(settings.accent, root);
+  root.style.setProperty("--calories", settings.calories);
+  root.style.setProperty("--protein", settings.protein);
+  root.style.setProperty("--fat", settings.fat);
+  root.style.setProperty("--carbs", settings.carbs);
+  root.style.setProperty("--warning", settings.warning);
+  root.style.setProperty("--danger", settings.danger);
+  const dark = root.classList.contains("dark");
+  root.style.setProperty("--warning-soft", accentTokens(settings.warning, dark).soft);
+  root.style.setProperty("--danger-soft", accentTokens(settings.danger, dark).soft);
+  root.style.setProperty("--card", mix(settings.panels, dark ? "#1c1c1e" : "#ffffff", dark ? 0.78 : 0.9));
+  root.style.setProperty("--muted", mix(settings.panels, dark ? "#242426" : "#f2f2f7", dark ? 0.68 : 0.82));
+  root.style.setProperty("--border", mix(settings.panels, dark ? "#3a3a3c" : "#e0e0e5", 0.72));
+  return settings;
 }
