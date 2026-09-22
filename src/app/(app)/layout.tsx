@@ -5,12 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Profile } from "@/types/database";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 /**
  * Оболочка авторизованной части приложения: проверка онбординга + таб-бар.
  */
-import { cache } from "react";
-
 const getCachedProfile = cache(async (userId: string) => {
   const supabase = await createClient();
   return supabase
@@ -27,11 +26,23 @@ export default async function AppLayout({
 }) {
   if (!isSupabaseConfigured()) redirect("/setup");
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) redirect("/login");
 
-  const { data: profile, error } = await getCachedProfile(session.user.id);
-  if (error) throw new Error("Не удалось загрузить профиль");
+  // Используем getUser для надежной серверной проверки токена
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  let { data: profile, error } = await getCachedProfile(user.id);
+
+  // Если профиль не найден (или ошибка) — пробуем безопасно создать/восстановить
+  if (error || !profile) {
+    const { data: createdProfile } = await supabase
+      .from("profiles")
+      .upsert({ id: user.id }, { onConflict: "id" })
+      .select("*")
+      .single();
+
+    profile = createdProfile;
+  }
 
   // Не даём превышать: гость и не-онбординг → ведём на онбординг
   if (!profile?.onboarding_completed) {
@@ -39,7 +50,7 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="relative mx-auto min-h-dvh max-w-md overflow-x-hidden pt-[env(safe-area-inset-top)]">
+    <div className="relative mx-auto min-h-dvh max-w-md overflow-x-hidden pt-[max(env(safe-area-inset-top),0.25rem)]">
       {/* Мягкие световые сферы для глубокого матового размытия (Apple Glass Ambient Orbs) */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
         <div className="animate-ambient absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />

@@ -52,18 +52,27 @@ export function calculateEnergyBalance(params: {
 }): DayEnergyBalance {
   const { biometrics, burnedCalories, consumedCalories } = params;
 
-  // Если биометрии нет, используем усредненный женский BMR ~1450 ккал
-  const bmr = biometrics
-    ? calculateBmr({
-        gender: biometrics.gender,
-        age: biometrics.age,
-        heightCm: biometrics.heightCm,
-        weightKg: biometrics.weightKg,
-      })
-    : 1450;
+  let bmr = 1450;
+  try {
+    if (biometrics && biometrics.weightKg > 0 && biometrics.heightCm > 0) {
+      const calculated = calculateBmr({
+        gender: biometrics.gender || "female",
+        age: Number.isFinite(biometrics.age) && biometrics.age > 0 ? biometrics.age : 25,
+        heightCm: Number.isFinite(biometrics.heightCm) && biometrics.heightCm > 0 ? biometrics.heightCm : 165,
+        weightKg: Number.isFinite(biometrics.weightKg) && biometrics.weightKg > 0 ? biometrics.weightKg : 55,
+      });
+      if (Number.isFinite(calculated) && calculated > 500) {
+        bmr = calculated;
+      }
+    }
+  } catch {
+    bmr = 1450;
+  }
 
-  const totalExpenditure = bmr + burnedCalories;
-  const netDeficit = totalExpenditure - consumedCalories;
+  const safeBurned = Number.isFinite(burnedCalories) ? burnedCalories : 0;
+  const safeConsumed = Number.isFinite(consumedCalories) ? consumedCalories : 0;
+  const totalExpenditure = bmr + safeBurned;
+  const netDeficit = totalExpenditure - safeConsumed;
 
   let status: DayEnergyBalance["status"] = "optimal_deficit";
   let statusText = "Оптимальный дефицит";
