@@ -56,7 +56,7 @@ export default function DayPage() {
     isToday,
   });
 
-  const { totalBurnedCalories, energyBalance } = useWorkouts(
+  const { totalBurnedCalories = 0, energyBalance } = useWorkouts(
     dateKey,
     day?.totals.calories ?? 0,
   );
@@ -183,16 +183,18 @@ export default function DayPage() {
                     <span className="font-bold text-sm text-foreground">
                       Расход и тренировки
                     </span>
-                    {totalBurnedCalories > 0 && (
+                    {(totalBurnedCalories ?? 0) > 0 && (
                       <span className="rounded-full bg-orange-500/20 px-2 py-0.5 text-[10px] font-extrabold text-orange-600 dark:text-orange-400">
                         +{totalBurnedCalories} ккал
                       </span>
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    {energyBalance.netDeficit > 0
-                      ? `Дефицит за сегодня: -${energyBalance.netDeficit} ккал 🔥`
-                      : `Профицит: +${Math.abs(energyBalance.netDeficit)} ккал`}
+                    {(energyBalance?.netDeficit ?? 0) > 0
+                      ? `Дефицит за сегодня: -${energyBalance?.netDeficit} ккал 🔥`
+                      : (energyBalance?.netDeficit ?? 0) < 0
+                        ? `Профицит: +${Math.abs(energyBalance?.netDeficit ?? 0)} ккал`
+                        : "Расход и баланс в норме"}
                   </div>
                 </div>
               </div>

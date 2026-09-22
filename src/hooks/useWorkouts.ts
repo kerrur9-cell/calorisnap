@@ -34,9 +34,12 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
       // 1. Быстро читаем из localStorage
       let localItems: WorkoutEntry[] = [];
       try {
-        const stored = localStorage.getItem(`${STORAGE_PREFIX}${dateKey}`);
+        const stored = typeof window !== "undefined" ? localStorage.getItem(`${STORAGE_PREFIX}${dateKey}`) : null;
         if (stored) {
-          localItems = JSON.parse(stored);
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            localItems = parsed;
+          }
         }
       } catch {
         // Игнорируем ошибки парсинга

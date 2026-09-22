@@ -41,3 +41,8 @@
   [headers.values]
     Cache-Control = "public, max-age=3600"
 
+[[redirects]]
+  from = "/_next/static/*"
+  to = "/static/:splat"
+  status = 200
+
