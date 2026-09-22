@@ -9,7 +9,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { calculateTdee } from "@/lib/nutrition/tdee";
 import { ageFromBirthDate, ACTIVITY_LABELS, GOAL_LABELS } from "@/lib/nutrition/tdee";
-import { calculateMacroTargets, calculateWaterTargetMl } from "@/lib/nutrition/macros";
+import { calculateMacroTargets } from "@/lib/nutrition/macros";
 import { todayKey } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types/database";
@@ -97,7 +97,6 @@ function ProfileFlow() {
           daily_protein_g: macros.proteinG,
           daily_fat_g: macros.fatG,
           daily_carbs_g: macros.carbsG,
-          daily_water_ml: calculateWaterTargetMl(kg),
         };
       }
       const { error: saveError } = await supabase.rpc("save_weight", {
@@ -180,7 +179,8 @@ function ProfileFlow() {
           <Row label="TDEE" value={tdee ? `${tdee} ккал` : "—"} />
           <Row label="Белки / Жиры / Углеводы" value={`${profile.daily_protein_g ?? "—"} / ${profile.daily_fat_g ?? "—"} / ${profile.daily_carbs_g ?? "—"} г`} />
           <Row label="Активность" value={profile.activity_level ? ACTIVITY_LABELS[profile.activity_level] : "—"} />
-          <Row label="Вода в день" value={`${profile.daily_water_ml} мл`} />
+
+
         </div>
         <Link
           href="/onboarding"

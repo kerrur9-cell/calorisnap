@@ -7,8 +7,6 @@ import { sumTotals, type DayTotals } from "@/lib/nutrition/macros";
 
 export interface DayData {
   meals: MealWithItems[];
-  /** Суммарный объём воды за день, мл */
-  waterMl: number;
   totals: DayTotals;
   mealCount: number;
 }
@@ -18,7 +16,7 @@ export function dayQueryKey(dateKey: string) {
 }
 
 /**
- * Загрузка всего за день: приёмы пищи с продуктами + вода.
+ * Загрузка всех приёмов пищи и продуктов за выбранный день.
  * Один запрос на «день», инвалидируется после любых изменений.
  */
 export function useDayLog(dateKey: string) {
@@ -27,21 +25,14 @@ export function useDayLog(dateKey: string) {
     queryFn: async (): Promise<DayData> => {
       const supabase = createClient();
 
-      const [mealsRes, waterRes] = await Promise.all([
-        supabase
-          .from("meal_entries")
-          .select("*, meal_items(*)")
-          .eq("entry_date", dateKey)
-          .order("logged_at", { ascending: true })
-          .returns<MealWithItems[]>(),
-        supabase
-          .from("water_entries")
-          .select("amount_ml")
-          .eq("entry_date", dateKey),
-      ]);
+      const mealsRes = await supabase
+        .from("meal_entries")
+        .select("*, meal_items(*)")
+        .eq("entry_date", dateKey)
+        .order("logged_at", { ascending: true })
+        .returns<MealWithItems[]>();
 
       if (mealsRes.error) throw mealsRes.error;
-      if (waterRes.error) throw waterRes.error;
 
       const meals = mealsRes.data ?? [];
       // Backfill names for entries created before names were snapshotted on save.
@@ -57,16 +48,12 @@ export function useDayLog(dateKey: string) {
         }));
       }
       meals.forEach((meal) => meal.meal_items.sort((a, b) => a.position - b.position));
-      const waterMl = (waterRes.data ?? []).reduce(
-        (acc, w) => acc + (w.amount_ml ?? 0),
-        0,
-      );
 
       const totals = sumTotals(
         meals.flatMap((m) => m.meal_items),
       );
 
-      return { meals, waterMl, totals, mealCount: meals.length };
+      return { meals, totals, mealCount: meals.length };
     },
     staleTime: 15_000,
   });

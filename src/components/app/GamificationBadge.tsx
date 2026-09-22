@@ -134,11 +134,6 @@ export function GamificationBadge() {
                   completed={gamification.completedTodayActions.loggedWeight}
                   xp="+20"
                 />
-                <ActionStatusItem
-                  title="Учёт воды"
-                  completed={gamification.completedTodayActions.loggedWater}
-                  xp="+15"
-                />
               </div>
             </div>
 

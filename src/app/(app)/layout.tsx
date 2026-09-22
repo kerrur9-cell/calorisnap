@@ -39,7 +39,7 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="relative mx-auto min-h-dvh max-w-md overflow-x-hidden">
+    <div className="relative mx-auto min-h-dvh max-w-md overflow-x-hidden pt-[env(safe-area-inset-top)]">
       {/* Мягкие световые сферы для глубокого матового размытия (Apple Glass Ambient Orbs) */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
         <div className="animate-ambient absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />

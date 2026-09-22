@@ -12,10 +12,7 @@ import {
   type Goal,
   type ActivityLevel,
 } from "@/lib/nutrition/tdee";
-import {
-  calculateMacroTargets,
-  calculateWaterTargetMl,
-} from "@/lib/nutrition/macros";
+import { calculateMacroTargets } from "@/lib/nutrition/macros";
 import { Loader2, ChevronRight } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProfile } from "@/hooks/useProfile";
@@ -88,8 +85,6 @@ function OnboardingForm({ initialProfile }: { initialProfile: Profile }) {
     setSaving(true);
     setError(null);
 
-    const water = calculateWaterTargetMl(Number(weightKg));
-
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
@@ -103,7 +98,6 @@ function OnboardingForm({ initialProfile }: { initialProfile: Profile }) {
         daily_protein_g: macros.proteinG,
         daily_fat_g: macros.fatG,
         daily_carbs_g: macros.carbsG,
-        daily_water_ml: water,
         onboarding_completed: true,
       })
       .eq("id", user.id).select("id").single();

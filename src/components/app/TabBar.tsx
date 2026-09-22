@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Camera, Droplets, BarChart3, User, UtensilsCrossed } from "lucide-react";
+import { Camera, Sparkles, BarChart3, User, UtensilsCrossed } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { todayKey, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/day", label: "День", icon: UtensilsCrossed },
   { href: "/stats", label: "Статистика", icon: BarChart3 },
-  { href: "/water", label: "Вода", icon: Droplets },
+  { href: "/hub", label: "Ещё", icon: Sparkles },
   { href: "/profile", label: "Профиль", icon: User },
 ];
 
@@ -34,27 +34,8 @@ export function TabBar() {
     TABS.forEach((tab) => router.prefetch(tab.href));
     router.prefetch("/camera");
 
-    // В свободное время (через 1с) прогреваем кэш данных для Воды и Профиля
+    // В свободное время (через 1с) прогреваем кэш данных для AI Хаба и Профиля
     const timer = setTimeout(() => {
-      const today = todayKey();
-      queryClient.prefetchQuery({
-        queryKey: ["water", today],
-        queryFn: async () => {
-          const supabase = createClient();
-          const { data: entries, error } = await supabase
-            .from("water_entries")
-            .select("id, amount_ml, created_at")
-            .eq("entry_date", today)
-            .order("created_at", { ascending: false });
-          if (error) throw error;
-          return {
-            total: (entries ?? []).reduce((a, w) => a + w.amount_ml!, 0),
-            entries: entries ?? [],
-          };
-        },
-        staleTime: 60 * 1000,
-      });
-
       queryClient.prefetchQuery({
         queryKey: ["weight-history"],
         queryFn: async () => {
@@ -76,7 +57,7 @@ export function TabBar() {
 
   return (
     <nav
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.25rem)" }}
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-card/90 backdrop-blur-xl shadow-2xl transform-gpu"
     >
       <div className="mx-auto flex h-16 max-w-md items-stretch justify-between px-2">
@@ -141,7 +122,7 @@ function TabLink({
       prefetch={true}
       onClick={onClick}
       className={cn(
-        "spring-press flex min-w-14 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors",
+        "spring-press flex min-h-11 min-w-14 touch-manipulation flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors",
         active ? "text-primary font-bold scale-105" : "text-muted-foreground hover:text-foreground",
       )}
     >

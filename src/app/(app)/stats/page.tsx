@@ -70,7 +70,7 @@ function StatsFlow() {
     queryKey: ["stats", period, days[0]],
     queryFn: async () => {
       const supabase = createClient();
-      const [stats, weights, water, meals] = await Promise.all([
+      const [stats, weights, meals] = await Promise.all([
         supabase
           .from("daily_stats")
           .select("*")
@@ -84,11 +84,6 @@ function StatsFlow() {
           .lte("recorded_at", days[days.length - 1])
           .order("recorded_at", { ascending: true }),
         supabase
-          .from("water_entries")
-          .select("amount_ml, entry_date")
-          .gte("entry_date", days[0])
-          .lte("entry_date", days[days.length - 1]),
-        supabase
           .from("meal_entries")
           .select("id, meal_type, entry_date, logged_at, meal_items(id, custom_food_name, weight_grams, calories, protein_g, fat_g, carbs_g)")
           .gte("entry_date", days[0])
@@ -96,12 +91,10 @@ function StatsFlow() {
       ]);
       if (stats.error) throw stats.error;
       if (weights.error) throw weights.error;
-      if (water.error) throw water.error;
       if (meals.error) throw meals.error;
       return {
         stats: stats.data ?? [],
         weights: weights.data ?? [],
-        water: water.data ?? [],
         meals: (meals.data ?? []) as unknown as MealHistoryEntry[],
       };
     },
@@ -109,10 +102,6 @@ function StatsFlow() {
 
   const chartData = useMemo(() => {
     const statsMap = new Map((calories?.stats ?? []).map((s) => [s.entry_date, s]));
-    const waterMap = new Map<string, number>();
-    for (const w of calories?.water ?? []) {
-      waterMap.set(w.entry_date!, (waterMap.get(w.entry_date!) ?? 0) + w.amount_ml!);
-    }
     return days.map((d) => {
       const stat = statsMap.get(d);
       return {
@@ -125,7 +114,6 @@ function StatsFlow() {
         protein: Number(stat?.total_protein ?? 0),
         fat: Number(stat?.total_fat ?? 0),
         carbs: Number(stat?.total_carbs ?? 0),
-        waterMl: waterMap.get(d) ?? 0,
       };
     });
   }, [calories, days]);
@@ -145,12 +133,6 @@ function StatsFlow() {
     return Math.round(
       withFood.reduce((a, d) => a + d.calories, 0) / withFood.length,
     );
-  }, [chartData]);
-
-  const avgWater = useMemo(() => {
-    const active = chartData.filter((d) => d.waterMl > 0);
-    if (active.length === 0) return 0;
-    return Math.round(active.reduce((a, d) => a + d.waterMl, 0) / active.length);
   }, [chartData]);
 
   const weightDelta = useMemo(() => {
@@ -209,10 +191,10 @@ function StatsFlow() {
           hint={`цель ${goal}`}
         />
         <StatCard
-          label="Вода в среднем"
-          value={`${avgWater}`}
-          unit="мл/день"
-          hint={`цель ${profile?.daily_water_ml ?? 2000}`}
+          label="Белок в среднем"
+          value={`${Math.round(chartData.filter((d) => d.protein > 0).reduce((sum, d) => sum + d.protein, 0) / Math.max(1, chartData.filter((d) => d.protein > 0).length))}`}
+          unit="г/день"
+          hint={`цель ${profile?.daily_protein_g ?? 120}`}
         />
         <StatCard
           label="Изменение веса"

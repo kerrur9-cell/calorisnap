@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator, ChevronDown, Scale, Mic, ChefHat } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Camera, Sparkles, Calculator, ChevronDown, Scale } from "lucide-react";
 import { useDayLog, mealTypeMeta, MEAL_TYPES } from "@/hooks/useDayLog";
 import { useProfile } from "@/hooks/useProfile";
 import { CalorieRing } from "@/components/day/CalorieRing";
@@ -14,19 +14,8 @@ import { sumTotals } from "@/lib/nutrition/macros";
 import type { MealType, MealWithItems } from "@/types/database";
 import { useSmartAlerts } from "@/hooks/useSmartAlerts";
 import { SmartAlertBanner } from "@/components/day/SmartAlertBanner";
-import { GamificationBadge } from "@/components/app/GamificationBadge";
 import { DailyBriefingCard } from "@/components/day/DailyBriefingCard";
 import dynamic from "next/dynamic";
-
-const VoiceAssistantModal = dynamic(
-  () => import("@/components/voice/VoiceAssistantModal").then((mod) => mod.VoiceAssistantModal),
-  { ssr: false }
-);
-
-const FridgeRecipeModal = dynamic(
-  () => import("@/components/fridge/FridgeRecipeModal").then((mod) => mod.FridgeRecipeModal),
-  { ssr: false }
-);
 
 const MacroBalancer = dynamic(
   () => import("@/components/day/MacroBalancer").then((mod) => mod.MacroBalancer),
@@ -46,8 +35,6 @@ export default function DayPage() {
   const [dateKey, setDateKey] = useState(todayKey());
   const [showAssistant, setShowAssistant] = useState(false);
   const [showBalancer, setShowBalancer] = useState(false);
-  const [showVoiceModal, setShowVoiceModal] = useState(false);
-  const [showFridgeModal, setShowFridgeModal] = useState(false);
   const isToday = dateKey === todayKey();
 
   const { data: day, isLoading, error } = useDayLog(dateKey);
@@ -69,34 +56,10 @@ export default function DayPage() {
   });
 
   return (
-    <main className="min-h-dvh bg-background px-4 pt-6">
-      {/* Верхняя панель: Уровень/XP, Холодильник и Голосовой ассистент */}
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <GamificationBadge />
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setShowFridgeModal(true)}
-            className="spring-press flex items-center gap-1.5 rounded-full border border-border/70 bg-card/90 backdrop-blur-md px-3 py-1.5 text-xs font-semibold shadow-xs hover:bg-muted"
-            title="Что приготовить из холодильника"
-            aria-label="Что приготовить из холодильника"
-          >
-            <ChefHat className="h-3.5 w-3.5 text-amber-500" />
-            <span>Холодильник</span>
-          </button>
-          <button
-            onClick={() => setShowVoiceModal(true)}
-            className="spring-press flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary-soft/80 backdrop-blur-md px-3.5 py-1.5 text-xs font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"
-            title="Голосовой ассистент"
-            aria-label="Голосовой ассистент"
-          >
-            <Mic className="h-3.5 w-3.5" />
-            <span>Голос</span>
-          </button>
-        </div>
-      </div>
+    <main className="min-h-dvh bg-background px-4 pt-4">
 
       {/* Шапка с датой */}
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-3.5 flex items-center justify-between">
         <button
           onClick={() => setDateKey((d) => addDays(d, -1))}
           aria-label="Предыдущий день"
@@ -153,7 +116,7 @@ export default function DayPage() {
       ) : (
         <>
           {/* Кольцо калорий */}
-          <section className="mb-6 flex flex-col items-center">
+          <section className="mb-4 flex flex-col items-center">
             <CalorieRing current={day?.totals.calories ?? 0} target={targetCalories} />
             {isToday && (
               <button
@@ -168,7 +131,7 @@ export default function DayPage() {
           </section>
 
           {/* БЖУ */}
-          <section className="glass-card glossy-sheen scroll-sway-reverse mb-8 space-y-3 rounded-3xl p-5 shadow-md animate-blur-reveal stagger-1">
+          <section className="glass-card glossy-sheen scroll-sway-reverse mb-4 space-y-3 rounded-3xl p-5 shadow-md animate-blur-reveal stagger-1">
             <MacroBar
               label="Белки"
               value={day?.totals.proteinG ?? 0}
@@ -218,11 +181,6 @@ export default function DayPage() {
             })}
           </section>
 
-          {/* Виджет воды */}
-          <QuickStats
-            waterMl={day?.waterMl ?? 0}
-            waterTarget={profile?.daily_water_ml ?? 2000}
-          />
 
           {/* Модальное окно Macro Balancer */}
           {showBalancer && (
@@ -241,45 +199,6 @@ export default function DayPage() {
             />
           )}
 
-          {/* Модальное окно Голосового ассистента */}
-          {showVoiceModal && (
-            <VoiceAssistantModal
-              isOpen={showVoiceModal}
-              onClose={() => setShowVoiceModal(false)}
-              dateKey={dateKey}
-              consumedTotals={day?.totals ?? { calories: 0, proteinG: 0, fatG: 0, carbsG: 0 }}
-              targetCalories={targetCalories}
-              macroTargets={macroTargets}
-              eatenFoodNames={[
-                ...new Set(
-                  (day?.meals ?? []).flatMap((m) =>
-                    m.meal_items.map((i) => i.custom_food_name).filter((n): n is string => Boolean(n))
-                  )
-                ),
-              ]}
-              onOpenBalancer={() => {
-                setShowVoiceModal(false);
-                setShowBalancer(true);
-              }}
-            />
-          )}
-
-          {/* Модальное окно AI-холодильника */}
-          {showFridgeModal && (
-            <FridgeRecipeModal
-              isOpen={showFridgeModal}
-              onClose={() => setShowFridgeModal(false)}
-              dateKey={dateKey}
-              remainingCalories={targetCalories - (day?.totals.calories ?? 0)}
-              remainingTotals={{
-                calories: Math.max(0, targetCalories - (day?.totals.calories ?? 0)),
-                proteinG: Math.max(0, macroTargets.proteinG - (day?.totals.proteinG ?? 0)),
-                fatG: Math.max(0, macroTargets.fatG - (day?.totals.fatG ?? 0)),
-                carbsG: Math.max(0, macroTargets.carbsG - (day?.totals.carbsG ?? 0)),
-              }}
-              macroTargets={macroTargets}
-            />
-          )}
         </>
       )}
     </main>
@@ -440,43 +359,8 @@ function MealAddActions({
   );
 }
 
-/** Быстрые виджеты под дневником */
-function QuickStats({
-  waterMl,
-  waterTarget,
-}: {
-  waterMl: number;
-  waterTarget: number;
-}) {
-  const waterPct = waterTarget > 0 ? Math.round((waterMl / waterTarget) * 100) : 0;
-  return (
-    <section className="mt-8 space-y-3">
-      <Link
-        href="/water"
-        className="glass-card glossy-sheen scroll-sway-subtle spring-press flex items-center gap-3.5 rounded-3xl p-4.5 shadow-md transition-all hover:border-water/40 group"
-      >
-        <div className="rounded-2xl p-2.5 bg-water/15 border border-water/30 text-water shadow-2xs">
-          <Droplets className="h-6 w-6 text-water" />
-        </div>
-        <div className="flex-1">
-          <div className="font-semibold text-foreground">Вода</div>
-          <div className="h-2 mt-1.5 overflow-hidden rounded-full bg-muted/60">
-            <div
-              className="macro-glossy h-full rounded-full bg-gradient-to-r from-water/80 to-water transition-all duration-500 shadow-xs"
-              style={{ width: `${Math.min(waterPct, 100)}%` }}
-            />
-          </div>
-        </div>
-        <div className="tabular-nums text-sm font-semibold">
-          {waterMl >= 1000
-            ? `${(waterMl / 1000).toFixed(1).replace(".", ",")} л`
-            : `${waterMl} мл`}
-          <span className="text-muted-foreground text-xs"> / {waterTarget >= 1000 ? `${(waterTarget / 1000).toFixed(1).replace(".", ",")} л` : `${waterTarget} мл`}</span>
-        </div>
-      </Link>
-    </section>
-  );
-}
+
+
 
 /** Скелетон при загрузке */
 function SkeletonDay() {

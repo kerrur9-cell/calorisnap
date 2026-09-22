@@ -13,7 +13,6 @@ export interface GamificationState {
     hitCalorieGoal: boolean;
     hitProteinGoal: boolean;
     loggedWeight: boolean;
-    loggedWater: boolean;
   };
   todayEarnedXp: number;
   unlockedBadges: Badge[];
@@ -83,18 +82,16 @@ export function getLevelDetails(totalXp: number): {
 export function calculateGamification(params: {
   dailyStats: DailyStat[];
   weightsCount: number;
-  waterDaysCount: number;
   targetCalories: number;
   targetProtein: number;
   todayTotals: {
     calories: number;
     proteinG: number;
     mealCount: number;
-    waterMl: number;
     hasWeightToday: boolean;
   };
 }): GamificationState {
-  const { dailyStats, weightsCount, waterDaysCount, targetCalories, targetProtein, todayTotals } = params;
+  const { dailyStats, weightsCount, targetCalories, targetProtein, todayTotals } = params;
 
   let totalXp = 0;
   let totalCalorieHits = 0;
@@ -129,8 +126,6 @@ export function calculateGamification(params: {
   // 2. Опыт за взвешивания: +20 XP за каждое
   totalXp += weightsCount * 20;
 
-  // 3. Опыт за учёт воды: +15 XP за дни с водой
-  totalXp += waterDaysCount * 15;
 
   // Опыт за сегодняшние действия
   let todayEarnedXp = 0;
@@ -142,14 +137,12 @@ export function calculateGamification(params: {
       todayTotals.calories <= targetCalories * 1.1,
     hitProteinGoal: targetProtein > 0 && todayTotals.proteinG >= targetProtein * 0.85,
     loggedWeight: todayTotals.hasWeightToday,
-    loggedWater: todayTotals.waterMl >= 1000,
   };
 
   if (completedTodayActions.loggedMeal) todayEarnedXp += Math.min(todayTotals.mealCount, 4) * 15;
   if (completedTodayActions.hitCalorieGoal) todayEarnedXp += 40;
   if (completedTodayActions.hitProteinGoal) todayEarnedXp += 35;
   if (completedTodayActions.loggedWeight) todayEarnedXp += 20;
-  if (completedTodayActions.loggedWater) todayEarnedXp += 15;
 
   // 4. Momentum (Импульс): количество активных дней из последних 14
   // Пользователь НЕ наказывается за один пропущенный день!
@@ -196,13 +189,13 @@ export function calculateGamification(params: {
       progressText: `${weightsCount}/5`,
     },
     {
-      id: "water_balance",
-      title: "Водный баланс",
-      description: "Учёт воды более 3 дней",
-      emoji: "💧",
+      id: "meal_streak",
+      title: "Дисциплина питания",
+      description: "Трекинг еды 10 дней подряд",
+      emoji: "📋",
       category: "consistency",
-      unlocked: waterDaysCount >= 3,
-      progressText: `${waterDaysCount}/3`,
+      unlocked: daysWithFood >= 10,
+      progressText: `${Math.min(daysWithFood, 10)}/10`,
     },
     {
       id: "momentum_7",

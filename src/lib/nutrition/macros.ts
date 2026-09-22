@@ -2,7 +2,7 @@ import type { Goal } from "./tdee";
 import { round } from "../utils";
 
 /**
- * Распределение БЖУ и норма воды.
+ * Распределение БЖУ по дневной калорийности.
  * Пропорции подобраны под цель: на дефиците белка больше (сохранение мышц).
  */
 
@@ -38,11 +38,6 @@ export function calculateMacroTargets(
     fatG: Math.round((targetCalories * split.fat) / 9),
     carbsG: Math.round((targetCalories * split.carbs) / 4),
   };
-}
-
-/** Норма воды: 30 мл на кг веса, округлённая до 100 мл */
-export function calculateWaterTargetMl(weightKg: number): number {
-  return Math.round((weightKg * 30) / 100) * 100;
 }
 
 /** Данные на 100 г продукта (короткие ключи — как в ответе AI и формах) */

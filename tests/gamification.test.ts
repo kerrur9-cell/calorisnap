@@ -42,14 +42,12 @@ describe("Gamification Engine", () => {
     const result = calculateGamification({
       dailyStats,
       weightsCount: 2,
-      waterDaysCount: 2,
       targetCalories: 2000,
       targetProtein: 120,
       todayTotals: {
         calories: 600,
         proteinG: 40,
         mealCount: 1,
-        waterMl: 1200,
         hasWeightToday: true,
       },
     });
