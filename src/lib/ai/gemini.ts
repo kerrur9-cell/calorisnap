@@ -7,9 +7,8 @@ import { safeParseAnalysis, type AiAnalysisResponse } from "./schema";
  * ключ живёт в GEMINI_API_KEY и в браузер не попадает.
  */
 
-const GEMINI_PRIMARY_MODEL = process.env.GEMINI_PRIMARY_MODEL ?? "gemini-3.5-flash";
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
-const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? GEMINI_MODEL;
+const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL ?? process.env.GEMINI_PRIMARY_MODEL ?? "gemini-3-flash-preview";
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? "gemini-3.6-flash";
 
 export interface AnalyzePhotoInput {
   /** base64 данные фото (без data: префикса) */
@@ -163,7 +162,16 @@ export async function analyzeFoodPhoto(
     },
   };
 
-  const response = await callGemini(body, apiKey, attempt === "secondary" ? GEMINI_FALLBACK_MODEL : GEMINI_PRIMARY_MODEL);
+  let response = await callGemini(body, apiKey, attempt === "secondary" ? GEMINI_FALLBACK_MODEL : GEMINI_PRIMARY_MODEL);
+  if (!response.ok && attempt === "primary") {
+    const altKey = process.env.GEMINI_FALLBACK_API_KEY || apiKey;
+    const altModel = GEMINI_FALLBACK_MODEL !== GEMINI_PRIMARY_MODEL ? GEMINI_FALLBACK_MODEL : "gemini-3.6-flash";
+    const altResponse = await callGemini(body, altKey, altModel);
+    if (altResponse.ok) {
+      response = altResponse;
+    }
+  }
+
   if (!response.ok) {
     if (response.status === 429 || response.status >= 500) {
       throw new Error("AI временно перегружен. Попробуйте ещё раз через минуту.");
@@ -208,10 +216,9 @@ export interface GeminiJsonOptions<T = unknown> {
 }
 
 const JSON_CANDIDATE_MODELS = [
-  "gemini-flash-lite-latest",
-  "gemini-3.5-flash-lite",
+  "gemini-3-flash-preview",
   "gemini-3.6-flash",
-  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
 ];
 
 /**

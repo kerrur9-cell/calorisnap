@@ -90,7 +90,27 @@ export async function POST(request: NextRequest) {
   if (hasGemini) {
     try {
       let contents;
-      if (body.audioBase64) {
+      const hasTranscript = Boolean(body.transcript && body.transcript.trim());
+
+      if (hasTranscript) {
+        contents = [
+          {
+            role: "user" as const,
+            parts: [
+              {
+                text: `Пользователь сказал: "${body.transcript}".
+В поле "transcript" верни "${body.transcript}".
+Определи статус ("success", "clarification_needed", "question_answered", "not_food", "empty").
+Если это еда — извлеки позиции в "items" с реалистичным весом порции и точным расчётом КБЖУ.
+Если это вопрос о калориях/диете — ответь в "aiResponse". Если фраза не о еде — дружелюбно сориентируй.
+В поле "aiResponse" обязательно дай понятный, доброжелательный ответ на русском языке.
+Предпочтительный приём пищи: ${body.defaultMealType ?? "auto"}.
+Верни строгий JSON.`,
+              },
+            ],
+          },
+        ];
+      } else if (body.audioBase64) {
         const cleanMime = body.mimeType.split(";")[0].trim();
         contents = [
           {
@@ -115,22 +135,7 @@ export async function POST(request: NextRequest) {
           },
         ];
       } else {
-        contents = [
-          {
-            role: "user" as const,
-            parts: [
-              {
-                text: `Пользователь ввёл фразу: "${body.transcript}".
-В поле "transcript" верни "${body.transcript}".
-Определи статус ("success", "clarification_needed", "question_answered", "not_food", "empty").
-Если это еда — извлеки позиции в "items". Если это вопрос о калориях/диете — ответь в "aiResponse". Если фраза не о еде — дружелюбно сориентируй.
-В поле "aiResponse" обязательно дай понятный ответ на русском.
-Предпочтительный приём пищи: ${body.defaultMealType ?? "auto"}.
-Верни строгий JSON.`,
-              },
-            ],
-          },
-        ];
+        return NextResponse.json({ error: "Передайте фразу или аудиозапись" }, { status: 400 });
       }
 
       const parsed = await generateGeminiJson({
@@ -164,6 +169,17 @@ export async function POST(request: NextRequest) {
       });
     } catch (err) {
       console.error("Gemini voice parse error:", err);
+      // Если передана аудиозапись, но декодирование не удалось
+      if (!body.transcript && body.audioBase64) {
+        return NextResponse.json({
+          transcript: "",
+          status: "empty",
+          suggestedMealType: body.defaultMealType ?? "snack",
+          items: [],
+          aiResponse: "Не удалось разобрать аудиозапись. Пожалуйста, надиктуйте фразу ближе к микрофону или введите блюда текстом ниже.",
+          tips: "Совет: можно ввести блюда текстом в поле ввода.",
+        });
+      }
     }
   }
 

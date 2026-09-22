@@ -97,7 +97,7 @@ export async function POST(request: Request) {
         systemPrompt: system,
         contents,
         temperature: 0.3,
-        timeoutMs: Math.max(1, Math.min(9_000, deadline - Date.now())),
+        timeoutMs: Math.max(1, Math.min(18_000, deadline - Date.now())),
         maxTokens: 1800,
         responseJsonSchema: responseFormat.json_schema.schema,
       });
