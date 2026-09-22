@@ -5,7 +5,7 @@ import { sumTotals, type NutritionRow } from "@/lib/nutrition/macros";
 import { decideAdvice, detectAdvicePreference, validateAdvice } from "@/lib/nutrition/advice";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 28;
 
 const requestSchema = z.object({
   date: z.iso.date(),
@@ -75,13 +75,16 @@ export async function POST(request: Request) {
       ? "Пользователь хочет ленивый вариант: максимум 5 минут, без духовки и сложного приготовления."
       : "";
   const system = `Ты — русскоязычный помощник по питанию CaloriSnap. Сервер рассчитал: цель ${targetCalories} ккал; съедено ${Math.round(totals.calories)} ккал; остаток ${decision.caloriesRemaining} ккал; осталось Б ${decision.macrosRemaining.proteinG} г, Ж ${decision.macrosRemaining.fatG} г, У ${decision.macrosRemaining.carbsG} г; режим ${decision.mode}; уже съедено: ${eaten}. ${preferenceRule} Уже предлагались в этом диалоге: ${previousNames.join(", ") || "нет"}; не повторяй их. Верни только JSON по схеме. При normal дай только столько вариантов, сколько реально отвечает последнему сообщению (обычно 1–2, максимум 3), каждый не больше остатка. Не пиши шаблонные вступления, не пересказывай все макросы, не предлагай один и тот же набор еды при разных вопросах. При goal_reached и over_limit recommendations обязан быть пустым: не предлагай еду и не говори, что перекус ничего не испортит. В message — одно короткое человеческое предложение, highlights — только полезные короткие детали (0–2). Режим и математику не меняй.`;
-  const models = [process.env.GROQ_CHAT_MODEL ?? "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+  // Two bounded attempts must fit inside the Netlify function limit. A fast 70B
+  // model keeps follow-up questions responsive instead of leaving the browser
+  // with a platform timeout.
+  const models = [process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile", "openai/gpt-oss-20b"];
   for (const model of [...new Set(models)]) {
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...body.messages, ...(body.messages.length ? [] : [{ role: "user", content: "Что мне можно съесть сегодня?" }])], response_format: responseFormat, reasoning_effort: "low", temperature: 0.3, max_completion_tokens: 1400 }),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(12_000),
       });
       if (!response.ok) continue;
       const json = await response.json();
