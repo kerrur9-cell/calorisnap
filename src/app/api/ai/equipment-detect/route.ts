@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateGeminiJson } from "@/lib/ai/gemini";
+import { calculateParsedWorkoutCalories } from "@/lib/workout/calculator";
 
 export const maxDuration = 25;
 
@@ -95,7 +96,29 @@ export async function POST(req: Request) {
       timeoutMs: 20_000,
     });
 
-    return NextResponse.json(result);
+    // Физиологическая калибровка энергозатрат тренажера под вес пользователя
+    const isCardio = result.category === "cardio";
+    const sampleSets = Math.max(1, result.recommendedSets || 3);
+    const computedTotal = calculateParsedWorkoutCalories({
+      exerciseName: result.machineName,
+      category: result.category,
+      sets: sampleSets,
+      reps: result.recommendedReps || 12,
+      durationMinutes: result.recommendedMinutes || (isCardio ? 20 : undefined),
+      userWeightKg,
+      userGender,
+    });
+
+    const calibratedPerSet = isCardio ? undefined : Math.max(3, Math.round(computedTotal / sampleSets));
+    const calibratedPerMinute = isCardio
+      ? Math.max(3, Math.round(computedTotal / (result.recommendedMinutes || 20)))
+      : undefined;
+
+    return NextResponse.json({
+      ...result,
+      caloriesPerSet: calibratedPerSet ?? result.caloriesPerSet,
+      caloriesPerMinute: calibratedPerMinute ?? result.caloriesPerMinute,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Не удалось распознать тренажер";
     return NextResponse.json({ error: message }, { status: 500 });

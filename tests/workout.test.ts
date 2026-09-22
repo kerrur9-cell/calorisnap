@@ -3,10 +3,71 @@ import {
   calculateCardioCalories,
   calculateStrengthCalories,
   calculateEnergyBalance,
+  calculateParsedWorkoutCalories,
 } from "../src/lib/workout/calculator";
 import { GYM_MACHINES } from "../src/lib/workout/machines";
 
 describe("Workout & Energy Balance Calculator", () => {
+  it("calculates realistic strength calories and prevents overestimation (e.g. barbell squats 4x10 @ 50kg)", () => {
+    // Пользователь 55 кг делает "Приседания со штангой, 4 подх. × 10 повт. · 50 кг"
+    // Ранее AI галлюцинировал ~224 ккал (завышено в 4-5 раз)
+    // Реальный физиологический расход: ~45-55 ккал
+    const burned = calculateParsedWorkoutCalories({
+      exerciseName: "Приседания со штангой",
+      category: "strength",
+      sets: 4,
+      reps: 10,
+      weightKg: 50,
+      userWeightKg: 55,
+    });
+
+    expect(burned).toBeGreaterThanOrEqual(40);
+    expect(burned).toBeLessThanOrEqual(65);
+    // Проверяем, что нет завышенных чисел в сотни калорий
+    expect(burned).toBeLessThan(100);
+  });
+
+  it("calculates realistic bodyweight glute bridge calories", () => {
+    const burned = calculateParsedWorkoutCalories({
+      exerciseName: "Ягодичный мостик",
+      category: "bodyweight",
+      sets: 4,
+      reps: 15,
+      userWeightKg: 55,
+    });
+
+    expect(burned).toBeGreaterThanOrEqual(30);
+    expect(burned).toBeLessThanOrEqual(50);
+  });
+
+  it("calculates small muscle isolation calories appropriately", () => {
+    const burned = calculateParsedWorkoutCalories({
+      exerciseName: "Подъем гантелей на бицепс",
+      category: "strength",
+      sets: 3,
+      reps: 12,
+      weightKg: 6,
+      userWeightKg: 55,
+    });
+
+    expect(burned).toBeGreaterThanOrEqual(10);
+    expect(burned).toBeLessThanOrEqual(25);
+  });
+
+  it("calculates cardio calories based on MET and duration", () => {
+    // 30 минут бега для 55 кг (MET ~8.5)
+    // 8.5 * 55 * 0.5 = ~234 ккал
+    const burned = calculateParsedWorkoutCalories({
+      exerciseName: "Бег на дорожке",
+      category: "cardio",
+      durationMinutes: 30,
+      userWeightKg: 55,
+    });
+
+    expect(burned).toBeGreaterThan(200);
+    expect(burned).toBeLessThan(260);
+  });
+
   it("calculates cardio calories correctly based on MET and user weight", () => {
     // Девушка весом 55 кг ходит в гору 30 минут (MET 7.0)
     // 7.0 * 55 * (30 / 60) = 192.5 ккал -> 193 ккал
@@ -19,8 +80,6 @@ describe("Workout & Energy Balance Calculator", () => {
   });
 
   it("calculates strength machine calories based on sets and weight", () => {
-    // Девушка весом 55 кг делает 4 подхода ягодичного мостика (интенсивность 1.4)
-    // 55 * 0.065 * 1.4 = ~5.005 ккал/сет * 4 = ~20 ккал
     const burned = calculateStrengthCalories({
       weightKg: 55,
       sets: 4,
@@ -31,7 +90,6 @@ describe("Workout & Energy Balance Calculator", () => {
   });
 
   it("calculates full daily energy balance and net deficit", () => {
-    // Девушка: 22 года, 165 см, 55 кг, BMR: 10*55 + 6.25*165 - 5*22 - 161 = 550 + 1031.25 - 110 - 161 = 1310 ккал
     const biometrics = {
       gender: "female" as const,
       age: 22,
@@ -39,9 +97,6 @@ describe("Workout & Energy Balance Calculator", () => {
       weightKg: 55,
     };
 
-    // Тренировка сожгла 350 ккал. Всего расход = 1310 + 350 = 1660 ккал
-    // За день съела 1200 ккал
-    // Итоговый дефицит = 1660 - 1200 = +460 ккал
     const balance = calculateEnergyBalance({
       biometrics,
       burnedCalories: 350,

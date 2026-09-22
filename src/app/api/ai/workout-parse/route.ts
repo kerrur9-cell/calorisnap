@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateGeminiJson } from "@/lib/ai/gemini";
+import { calculateParsedWorkoutCalories } from "@/lib/workout/calculator";
 
 export const maxDuration = 25;
 
@@ -44,14 +45,10 @@ export async function POST(req: Request) {
 1. Понять, какое именно упражнение/активность выполнена.
 2. Определить категорию: "cardio" (кардио/бег/ходьба/эллипс), "strength" (свободные веса), "machine" (тренажеры), "bodyweight" (собственный вес).
 3. Извлечь параметры: подходы (sets), повторения (reps), рабочий вес отягощения (weightKg) или длительность в минутах (durationMinutes).
-4. Точно рассчитать РАСХОД КАЛОРИЙ (caloriesBurned, целое число ккал) С УЧЕТОМ параметров пользователя:
-   - Пол: ${userGender === "female" ? "женский" : "мужской"}
-   - Вес: ${userWeightKg} кг
-   - Рост: ${userHeightCm} см
-   - Возраст: ${userAge} лет
-   Формулы энергозатрат:
-   - Кардио: MET * вес_кг * (минуты / 60). (Бег 8 км/ч MET ~8.3; ходьба в гору MET ~7.0; эллипс MET ~6.5; скакалка MET ~10).
-   - Силовые / тренажеры: 1 подход средней тяжести сжигает около ${Math.round(userWeightKg * 0.07)} ккал (включая EPOC и отдых). Базовые упражнения на ноги/ягодицы (ягодичный мостик, жим ногами, приседания) тратят в 1.3–1.5 раза больше калорий, чем руки или пресс.
+4. Оценить расход калорий (caloriesBurned, целое число ккал):
+   ВНИМАНИЕ: ОДНО силовое упражнение (3-4 подхода) длится суммарно всего ~4–7 минут и расходует около 20–55 ккал!
+   НИ В КОЕМ СЛУЧАЕ НЕ ПУТАЙ 1 упражнение со всей часовой тренировкой в зале!
+   4 подхода приседаний со штангой — это ~40-55 ккал, а НЕ 200+ ккал!
 5. Указать основные целевые мышцы на русском (targetMuscles, 2-3 группы).
 6. Дать короткий теплый совет по технике и пользе (advice, 1-2 предложения, дружелюбный тон).
 
@@ -76,7 +73,24 @@ export async function POST(req: Request) {
       timeoutMs: 15_000,
     });
 
-    return NextResponse.json(result);
+    // Строгий физиологический расчет на сервере исключает любые завышения и галлюцинации LLM
+    const exactCalories = calculateParsedWorkoutCalories({
+      exerciseName: result.exerciseName,
+      category: result.category,
+      durationMinutes: result.durationMinutes,
+      sets: result.sets,
+      reps: result.reps,
+      weightKg: result.weightKg,
+      userWeightKg,
+      userHeightCm,
+      userGender,
+      userAge,
+    });
+
+    return NextResponse.json({
+      ...result,
+      caloriesBurned: exactCalories,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Не удалось распознать упражнение";
     return NextResponse.json({ error: message }, { status: 500 });
