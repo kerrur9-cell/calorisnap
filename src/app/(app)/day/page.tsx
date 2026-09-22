@@ -76,7 +76,7 @@ export default function DayPage() {
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setShowFridgeModal(true)}
-            className="flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-semibold shadow-xs transition-all hover:bg-muted active:scale-95"
+            className="spring-press flex items-center gap-1.5 rounded-full border border-border/70 bg-card/90 backdrop-blur-md px-3 py-1.5 text-xs font-semibold shadow-xs hover:bg-muted"
             title="Что приготовить из холодильника"
             aria-label="Что приготовить из холодильника"
           >
@@ -85,7 +85,7 @@ export default function DayPage() {
           </button>
           <button
             onClick={() => setShowVoiceModal(true)}
-            className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft/60 px-3.5 py-1.5 text-xs font-semibold text-primary shadow-xs transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
+            className="spring-press flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary-soft/80 backdrop-blur-md px-3.5 py-1.5 text-xs font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"
             title="Голосовой ассистент"
             aria-label="Голосовой ассистент"
           >
@@ -155,13 +155,13 @@ export default function DayPage() {
           {/* Кольцо калорий */}
           <section className="mb-6 flex flex-col items-center">
             <CalorieRing current={day?.totals.calories ?? 0} target={targetCalories} />
-            {isToday && <button onClick={() => setShowAssistant(true)} className="mt-3 flex items-center gap-2 rounded-full bg-primary-soft px-4 py-2 text-sm font-medium text-primary"><Sparkles className="h-4 w-4" /> Спросить, что можно съесть</button>}
+            {isToday && <button onClick={() => setShowAssistant(true)} className="spring-press mt-3 flex items-center gap-2 rounded-full bg-primary-soft/90 border border-primary/20 px-4 py-2 text-sm font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"><Sparkles className="h-4 w-4" /> Спросить, что можно съесть</button>}
             {isToday && showAssistant && <FoodAssistantBoundary><FoodAssistant onClose={() => setShowAssistant(false)} /></FoodAssistantBoundary>}
-            <Link href="/calculator" className="mt-3 flex items-center gap-1 text-sm text-muted-foreground underline"><Calculator className="h-4 w-4" /> Калькулятор калорий</Link>
+            <Link href="/calculator" className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline"><Calculator className="h-3.5 w-3.5" /> Калькулятор калорий</Link>
           </section>
 
           {/* БЖУ */}
-          <section className="mb-8 space-y-3 rounded-2xl bg-card p-4 shadow-sm">
+          <section className="glass-card mb-8 space-y-3 rounded-3xl p-5 shadow-xs animate-blur-reveal stagger-1">
             <MacroBar
               label="Белки"
               value={day?.totals.proteinG ?? 0}

@@ -564,11 +564,11 @@ export function VoiceAssistantModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4 backdrop-blur-xs"
+      className="animate-backdrop-fade fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-md rounded-t-3xl bg-card p-5 shadow-2xl sm:rounded-3xl max-h-[85vh] overflow-y-auto no-scrollbar space-y-4">
+      <div className="animate-sheet-spring w-full max-w-md rounded-t-3xl bg-card/95 backdrop-blur-xl p-5 shadow-2xl sm:rounded-3xl max-h-[85vh] overflow-y-auto no-scrollbar space-y-4 border border-border/40">
         {/* iOS-стиль индикатор свайпа вниз */}
         <div className="mx-auto -mt-1 mb-2 h-1.5 w-12 rounded-full bg-muted-foreground/20 sm:hidden shrink-0" />
 

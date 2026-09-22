@@ -98,10 +98,10 @@ export function TabBar() {
         >
           <span
             className={cn(
-              "flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95",
+              "spring-press flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all",
               (pendingHref === "/camera" || pathname === "/camera")
-                ? "bg-primary ring-4 ring-primary/25"
-                : "bg-primary",
+                ? "bg-primary ring-4 ring-primary/30 shadow-primary/40 scale-105"
+                : "bg-primary shadow-primary/20",
             )}
           >
             <Camera className="h-6 w-6 text-primary-foreground" />
@@ -141,11 +141,11 @@ function TabLink({
       prefetch={true}
       onClick={onClick}
       className={cn(
-        "flex min-w-14 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors",
-        active ? "text-primary font-semibold" : "text-muted-foreground",
+        "spring-press flex min-w-14 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors",
+        active ? "text-primary font-bold scale-105" : "text-muted-foreground hover:text-foreground",
       )}
     >
-      <Icon className="h-5 w-5" />
+      <Icon className="h-5 w-5 transition-transform" />
       {label}
     </Link>
   );

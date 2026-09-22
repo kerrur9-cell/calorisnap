@@ -62,7 +62,7 @@ export function DailyBriefingCard({
   return (
     <section
       aria-label="AI Брифинг дня"
-      className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card to-primary-soft/30 p-4 shadow-xs transition-all"
+      className="glass-card relative overflow-hidden rounded-3xl p-4 shadow-xs transition-all duration-300 animate-blur-reveal"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">

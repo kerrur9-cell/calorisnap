@@ -38,7 +38,14 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="mx-auto min-h-dvh max-w-md">
+    <div className="relative mx-auto min-h-dvh max-w-md overflow-x-hidden">
+      {/* Мягкие световые сферы для глубокого матового размытия (Apple Glass Ambient Orbs) */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+        <div className="animate-ambient absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
+        <div className="animate-ambient absolute top-1/3 -left-20 h-64 w-64 rounded-full bg-water/10 blur-3xl" style={{ animationDelay: "-5s" }} />
+        <div className="animate-ambient absolute top-2/3 -right-20 h-64 w-64 rounded-full bg-warning/10 blur-3xl" style={{ animationDelay: "-9s" }} />
+      </div>
+
       <ThemeSync initialProfile={profile as Profile} />
       {/* Один скролл-контейнер с отступом под таб-бар */}
       <div className="pb-24">

@@ -35,13 +35,13 @@ export function MacroBar({
           <span className="ml-1">{suffix}</span>
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
+      <div className="h-2.5 overflow-hidden rounded-full bg-muted/60">
         <div
           className={cn(
-            "h-full rounded-full transition-all duration-700",
-            color === "protein" && "bg-protein",
-            color === "fat" && "bg-fat",
-            color === "carbs" && "bg-carbs",
+            "h-full rounded-full transition-all duration-700 ease-out shadow-xs",
+            color === "protein" && "bg-gradient-to-r from-protein/80 to-protein",
+            color === "fat" && "bg-gradient-to-r from-fat/80 to-fat",
+            color === "carbs" && "bg-gradient-to-r from-carbs/80 to-carbs",
           )}
           style={{ width: `${Math.min(percent, 100)}%` }}
         />

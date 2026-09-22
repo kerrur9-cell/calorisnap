@@ -148,3 +148,121 @@ body::-webkit-scrollbar {
 .animate-pulse-soft {
   animation: pulse-soft 1.6s ease-in-out infinite;
 }
+
+/* ==========================================================================
+   Высокопроизводительная система анимаций (Apple Spring + Motion Blur 60 FPS)
+   Все анимации построены строго на GPU-свойствах: transform3d, opacity, filter.
+   ========================================================================== */
+
+/* Плавное кинематографичное появление с размытием (Motion Blur Dissolve) */
+@keyframes blur-reveal {
+  0% {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translate3d(0, 10px, 0) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.animate-blur-reveal {
+  animation: blur-reveal 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+/* Выезд модальных окон снизу (iOS Spring Sheet) с мягким блюром */
+@keyframes sheet-spring-up {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0) scale(0.96);
+    filter: blur(6px);
+  }
+  65% {
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-sheet-spring {
+  animation: sheet-spring-up 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+/* Плавное затемнение подложки с размытием */
+@keyframes fade-in-backdrop {
+  0% {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+
+.animate-backdrop-fade {
+  animation: fade-in-backdrop 0.28s ease-out both;
+}
+
+/* Мягкое неоновое дыхание кольца калорий */
+@keyframes ring-glow-primary {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px rgba(52, 199, 89, 0.28));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(52, 199, 89, 0.5));
+  }
+}
+
+.animate-ring-glow {
+  animation: ring-glow-primary 3.5s ease-in-out infinite;
+}
+
+/* Атмосферное плавное покачивание световых пятен (Ambient Light Orbs) */
+@keyframes ambient-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(20px, -20px, 0) scale(1.1);
+  }
+}
+
+.animate-ambient {
+  animation: ambient-float 14s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Тактильные пружинящие нажатия для кнопок и карточек */
+.spring-press {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+  transform: translateZ(0);
+}
+.spring-press:active {
+  transform: scale(0.96) translateZ(0);
+}
+
+/* Матовое стекло Apple Glassmorphism */
+.glass-card {
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* Каскадные задержки для поочерёдного выплывания списков */
+.stagger-1 { animation-delay: 40ms; }
+.stagger-2 { animation-delay: 80ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 160ms; }
+.stagger-5 { animation-delay: 200ms; }
+
