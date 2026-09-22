@@ -1,9 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Camera, Droplets, BarChart3, User, UtensilsCrossed } from "lucide-react";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { usePathname, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
+import { todayKey, cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/day", label: "День", icon: UtensilsCrossed },
@@ -12,9 +15,64 @@ const TABS = [
   { href: "/profile", label: "Профиль", icon: User },
 ];
 
-/** Нижний таб-бар. Камера — отдельная акцентная кнопка по центру. */
+/** Нижний таб-бар с мгновенным откликом (0ms prefetching + optimistic highlight). */
 export function TabBar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [prevPath, setPrevPath] = useState(pathname);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  // Сброс ожидаемого перехода при смене пути без вызова setState в useEffect
+  if (prevPath !== pathname) {
+    setPrevPath(pathname);
+    setPendingHref(null);
+  }
+
+  // Немедленный фоновый предзапрос всех вкладок и данных
+  useEffect(() => {
+    TABS.forEach((tab) => router.prefetch(tab.href));
+    router.prefetch("/camera");
+
+    // В свободное время (через 1с) прогреваем кэш данных для Воды и Профиля
+    const timer = setTimeout(() => {
+      const today = todayKey();
+      queryClient.prefetchQuery({
+        queryKey: ["water", today],
+        queryFn: async () => {
+          const supabase = createClient();
+          const { data: entries, error } = await supabase
+            .from("water_entries")
+            .select("id, amount_ml, created_at")
+            .eq("entry_date", today)
+            .order("created_at", { ascending: false });
+          if (error) throw error;
+          return {
+            total: (entries ?? []).reduce((a, w) => a + w.amount_ml!, 0),
+            entries: entries ?? [],
+          };
+        },
+        staleTime: 60 * 1000,
+      });
+
+      queryClient.prefetchQuery({
+        queryKey: ["weight-history"],
+        queryFn: async () => {
+          const supabase = createClient();
+          const { data, error } = await supabase
+            .from("weight_entries")
+            .select("weight_kg, recorded_at")
+            .order("recorded_at", { ascending: false })
+            .limit(7);
+          if (error) throw error;
+          return data ?? [];
+        },
+        staleTime: 60 * 1000,
+      });
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [router, queryClient]);
 
   return (
     <nav
@@ -23,18 +81,25 @@ export function TabBar() {
     >
       <div className="mx-auto flex h-16 max-w-md items-stretch justify-between px-2">
         {TABS.slice(0, 2).map((tab) => (
-          <TabLink key={tab.href} {...tab} active={pathname.startsWith(tab.href)} />
+          <TabLink
+            key={tab.href}
+            {...tab}
+            active={pendingHref ? pendingHref === tab.href : pathname.startsWith(tab.href)}
+            onClick={() => setPendingHref(tab.href)}
+          />
         ))}
 
         {/* Центральная кнопка камеры */}
         <Link
           href="/camera"
+          prefetch={true}
+          onClick={() => setPendingHref("/camera")}
           className="relative -top-5 flex flex-col items-center justify-center"
         >
           <span
             className={cn(
               "flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95",
-              pathname === "/camera"
+              (pendingHref === "/camera" || pathname === "/camera")
                 ? "bg-primary ring-4 ring-primary/25"
                 : "bg-primary",
             )}
@@ -45,7 +110,12 @@ export function TabBar() {
         </Link>
 
         {TABS.slice(2).map((tab) => (
-          <TabLink key={tab.href} {...tab} active={pathname.startsWith(tab.href)} />
+          <TabLink
+            key={tab.href}
+            {...tab}
+            active={pendingHref ? pendingHref === tab.href : pathname.startsWith(tab.href)}
+            onClick={() => setPendingHref(tab.href)}
+          />
         ))}
       </div>
     </nav>
@@ -57,18 +127,22 @@ function TabLink({
   label,
   icon: Icon,
   active,
+  onClick,
 }: {
   href: string;
   label: string;
   icon: typeof User;
   active: boolean;
+  onClick: () => void;
 }) {
   return (
     <Link
       href={href}
+      prefetch={true}
+      onClick={onClick}
       className={cn(
         "flex min-w-14 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors",
-        active ? "text-primary" : "text-muted-foreground",
+        active ? "text-primary font-semibold" : "text-muted-foreground",
       )}
     >
       <Icon className="h-5 w-5" />
