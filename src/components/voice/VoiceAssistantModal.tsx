@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, X, Loader2, Sparkles, Check, ArrowRight, Volume2, Radio } from "lucide-react";
+import { Mic, X, Loader2, Sparkles, Check, ArrowRight, Volume2, Radio, Square } from "lucide-react";
 import { classifyVoiceIntent, answerVoiceQuery, type VoiceQueryResult } from "@/lib/voice/intent";
 import type { DayTotals, MacroTargets } from "@/lib/nutrition/macros";
 import type { MealType } from "@/types/database";
@@ -56,6 +56,7 @@ export function VoiceAssistantModal({
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isStartingRef = useRef(false);
 
   const cleanupAudio = () => {
     if (timerRef.current) {
@@ -76,6 +77,7 @@ export function VoiceAssistantModal({
       } catch {
         // ignore
       }
+      mediaRecorderRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -83,6 +85,7 @@ export function VoiceAssistantModal({
     }
     setIsListening(false);
     setRecordingSeconds(0);
+    isStartingRef.current = false;
   };
 
   const handleClose = () => {
@@ -94,7 +97,7 @@ export function VoiceAssistantModal({
     onClose();
   };
 
-  // Очистка при размонтировании или закрытии
+  // Очистка при закрытии
   useEffect(() => {
     if (!isOpen) {
       cleanupAudio();
@@ -107,12 +110,11 @@ export function VoiceAssistantModal({
   // Таймер длительности записи
   useEffect(() => {
     if (isListening) {
+      setRecordingSeconds(0);
       timerRef.current = setInterval(() => {
         setRecordingSeconds((prev) => {
           if (prev >= 20) {
-            // Авто-остановка через 20 секунд
-            stopListening();
-            return 20;
+            return prev;
           }
           return prev + 1;
         });
@@ -131,8 +133,18 @@ export function VoiceAssistantModal({
     };
   }, [isListening]);
 
+  // Авто-остановка при 20 секундах
+  useEffect(() => {
+    if (recordingSeconds >= 20 && isListening) {
+      stopListening();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordingSeconds, isListening]);
+
   // Запуск записи звука
   async function startListening() {
+    if (isStartingRef.current || isListening || isProcessing) return;
+    isStartingRef.current = true;
     setError(null);
     setInfoAnswer(null);
     setParsedItems(null);
@@ -147,17 +159,18 @@ export function VoiceAssistantModal({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Определение поддерживаемого MIME-типа
       let mimeType = "audio/webm";
       if (typeof MediaRecorder !== "undefined") {
         if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
           mimeType = "audio/webm;codecs=opus";
         } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
           mimeType = "audio/mp4";
+        } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+          mimeType = "audio/ogg";
         }
       }
 
-      const recorder = new MediaRecorder(stream, { mimeType: mimeType.split(";")[0] ? mimeType : undefined });
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -166,19 +179,35 @@ export function VoiceAssistantModal({
         }
       };
 
+      recorder.onerror = (e) => {
+        console.error("MediaRecorder error:", e);
+        cleanupAudio();
+        setIsProcessing(false);
+      };
+
       recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        if (audioBlob.size > 200) {
+        // Останавливаем стрим ПОСЛЕ завершения работы рекордера
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
+
+        const chunks = [...audioChunksRef.current];
+        audioChunksRef.current = [];
+
+        if (chunks.length > 0) {
+          const audioBlob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
           await processRecordedAudio(audioBlob);
         } else {
           setIsProcessing(false);
+          setIsListening(false);
         }
       };
 
-      recorder.start(250); // собираем чанки каждые 250мс
+      recorder.start(250);
       setIsListening(true);
 
-      // Дополнительно запускаем Web Speech API для живого предпросмотра текста, если поддерживается
+      // Дополнительно: живой превью текста через Web Speech API (если поддерживается)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
@@ -194,12 +223,12 @@ export function VoiceAssistantModal({
             if (text) setTranscript(text);
           };
           recognition.onerror = () => {
-            // Игнорируем сетевые ошибки Google Speech — MediaRecorder сделает надежную запись
+            // Игнорируем ошибки Google Speech
           };
           recognition.start();
           recognitionRef.current = recognition;
         } catch {
-          // Игнорируем
+          // ignore
         }
       }
     } catch (err) {
@@ -207,14 +236,15 @@ export function VoiceAssistantModal({
       setError(
         err instanceof Error && err.name === "NotAllowedError"
           ? "Доступ к микрофону заблокирован. Разрешите микрофон в настройках браузера."
-          : "Не удалось получить доступ к микрофону. Введите запрос текстом."
+          : "Не удалось включить микрофон. Вы можете ввести запрос текстом ниже."
       );
+    } finally {
+      isStartingRef.current = false;
     }
   }
 
   // Остановка записи
-  function stopListening() {
-    setIsListening(false);
+  function stopListening(isCancel = false) {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
@@ -223,21 +253,33 @@ export function VoiceAssistantModal({
       }
       recognitionRef.current = null;
     }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      setIsProcessing(true);
-      mediaRecorderRef.current.stop();
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-  }
 
-  function toggleListening() {
-    if (isListening) {
-      stopListening();
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    setIsListening(false);
+
+    if (isCancel) {
+      cleanupAudio();
+      setIsProcessing(false);
+      return;
+    }
+
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== "inactive") {
+      setIsProcessing(true);
+      try {
+        rec.stop();
+      } catch (err) {
+        console.error("Error stopping recorder:", err);
+        cleanupAudio();
+        setIsProcessing(false);
+      }
     } else {
-      startListening();
+      cleanupAudio();
+      setIsProcessing(false);
     }
   }
 
@@ -257,7 +299,7 @@ export function VoiceAssistantModal({
     setIsProcessing(true);
     setError(null);
 
-    // Если Web Speech уже распознал текстовый вопрос о дневнике, отвечаем сразу локально
+    // Если Web Speech уже распознал информационный запрос
     if (transcript.trim()) {
       const intent = classifyVoiceIntent(transcript);
       if (intent !== "LOG_FOOD" && intent !== "UNKNOWN") {
@@ -305,7 +347,6 @@ export function VoiceAssistantModal({
       if (data.transcript) {
         setTranscript(data.transcript);
 
-        // Проверяем, не был ли это вопрос
         const recognizedIntent = classifyVoiceIntent(data.transcript);
         if (recognizedIntent !== "LOG_FOOD" && recognizedIntent !== "UNKNOWN") {
           const answer = answerVoiceQuery({
@@ -344,7 +385,6 @@ export function VoiceAssistantModal({
 
     const intent = classifyVoiceIntent(text);
 
-    // Если это информационный вопрос о дневнике (сколько съел, сколько осталось и т.д.)
     if (intent !== "LOG_FOOD" && intent !== "UNKNOWN") {
       const answer = answerVoiceQuery({
         intent,
@@ -441,40 +481,64 @@ export function VoiceAssistantModal({
           </button>
         </header>
 
-        {/* Анимация микрофона и кнопка */}
+        {/* Анимация микрофона и кнопки управления */}
         <div className="flex flex-col items-center justify-center py-4">
           <div className="relative flex items-center justify-center">
             {isListening && (
               <>
-                <span className="absolute h-24 w-24 animate-ping rounded-full bg-red-500/20" />
-                <span className="absolute h-20 w-20 animate-pulse rounded-full bg-primary/30" />
+                <span className="absolute h-24 w-24 animate-ping rounded-full bg-red-500/25" />
+                <span className="absolute h-20 w-20 animate-pulse rounded-full bg-red-500/40" />
               </>
             )}
             <button
-              onClick={toggleListening}
+              onClick={() => {
+                if (isListening) {
+                  stopListening();
+                } else {
+                  startListening();
+                }
+              }}
               disabled={isProcessing}
               className={`relative z-10 flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95 ${
                 isListening
-                  ? "bg-red-500 text-white shadow-red-500/40"
+                  ? "bg-red-500 text-white shadow-red-500/40 ring-4 ring-red-400/30"
                   : "bg-primary text-primary-foreground hover:opacity-90"
               } disabled:opacity-50`}
-              aria-label={isListening ? "Остановить запись" : "Начать запись"}
+              aria-label={isListening ? "Завершить запись" : "Начать запись"}
             >
               {isProcessing ? (
                 <Loader2 className="h-7 w-7 animate-spin" />
               ) : isListening ? (
-                <Mic className="h-7 w-7 animate-pulse" />
+                <Square className="h-7 w-7 fill-white" />
               ) : (
                 <Mic className="h-7 w-7" />
               )}
             </button>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-xs font-semibold">
+
+          <div className="mt-3 flex flex-col items-center gap-2 text-xs font-semibold">
             {isListening ? (
-              <span className="flex items-center gap-1.5 text-red-500">
-                <Radio className="h-3.5 w-3.5 animate-pulse" />
-                Идёт запись... 0:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds} (нажмите, чтобы завершить)
-              </span>
+              <>
+                <span className="flex items-center gap-1.5 text-red-500 font-bold">
+                  <Radio className="h-3.5 w-3.5 animate-pulse" />
+                  Запись: 0:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds} / 0:20
+                </span>
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    onClick={() => stopListening(false)}
+                    className="flex items-center gap-1.5 rounded-full bg-red-500 px-4 py-1.5 text-xs font-bold text-white shadow-md hover:bg-red-600 active:scale-95 transition-all"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    Завершить запись
+                  </button>
+                  <button
+                    onClick={() => stopListening(true)}
+                    className="rounded-full bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/80"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </>
             ) : isProcessing ? (
               <span className="flex items-center gap-1.5 text-primary">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -482,7 +546,7 @@ export function VoiceAssistantModal({
               </span>
             ) : (
               <span className="text-muted-foreground">
-                Нажмите на микрофон и назовите блюда
+                Нажмите на микрофон для записи
               </span>
             )}
           </div>
