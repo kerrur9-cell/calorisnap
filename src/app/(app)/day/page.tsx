@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator, ChevronDown, Scale, Mic } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator, ChevronDown, Scale, Mic, ChefHat } from "lucide-react";
 import { useDayLog, mealTypeMeta, MEAL_TYPES } from "@/hooks/useDayLog";
 import { useProfile } from "@/hooks/useProfile";
 import { CalorieRing } from "@/components/day/CalorieRing";
@@ -17,6 +17,8 @@ import { SmartAlertBanner } from "@/components/day/SmartAlertBanner";
 import { MacroBalancer } from "@/components/day/MacroBalancer";
 import { GamificationBadge } from "@/components/app/GamificationBadge";
 import { VoiceAssistantModal } from "@/components/voice/VoiceAssistantModal";
+import { DailyBriefingCard } from "@/components/day/DailyBriefingCard";
+import { FridgeRecipeModal } from "@/components/fridge/FridgeRecipeModal";
 
 /**
  * Главный экран: день пользователя.
@@ -27,6 +29,7 @@ export default function DayPage() {
   const [showAssistant, setShowAssistant] = useState(false);
   const [showBalancer, setShowBalancer] = useState(false);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [showFridgeModal, setShowFridgeModal] = useState(false);
   const isToday = dateKey === todayKey();
 
   const { data: day, isLoading, error } = useDayLog(dateKey);
@@ -34,33 +37,44 @@ export default function DayPage() {
 
   const targetCalories = profile?.daily_calorie_target ?? 2000;
   const macroTargets = {
-    protein: profile?.daily_protein_g ?? 120,
-    fat: profile?.daily_fat_g ?? 70,
-    carbs: profile?.daily_carbs_g ?? 200,
+    proteinG: profile?.daily_protein_g ?? 120,
+    fatG: profile?.daily_fat_g ?? 70,
+    carbsG: profile?.daily_carbs_g ?? 200,
   };
 
   const { activeAlert, dismissAlert } = useSmartAlerts({
     targetCalories,
     consumedCalories: day?.totals.calories ?? 0,
-    targetProtein: macroTargets.protein,
+    targetProtein: macroTargets.proteinG,
     consumedProtein: day?.totals.proteinG ?? 0,
     isToday,
   });
 
   return (
     <main className="min-h-dvh bg-background px-4 pt-6">
-      {/* Верхняя панель: Уровень/XP и Голосовой ассистент */}
-      <div className="mb-4 flex items-center justify-between">
+      {/* Верхняя панель: Уровень/XP, Холодильник и Голосовой ассистент */}
+      <div className="mb-4 flex items-center justify-between gap-2">
         <GamificationBadge />
-        <button
-          onClick={() => setShowVoiceModal(true)}
-          className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft/60 px-3.5 py-1.5 text-xs font-semibold text-primary shadow-xs transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
-          title="Голосовой ассистент"
-          aria-label="Голосовой ассистент"
-        >
-          <Mic className="h-3.5 w-3.5" />
-          <span>Голос</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setShowFridgeModal(true)}
+            className="flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-semibold shadow-xs transition-all hover:bg-muted active:scale-95"
+            title="Что приготовить из холодильника"
+            aria-label="Что приготовить из холодильника"
+          >
+            <ChefHat className="h-3.5 w-3.5 text-amber-500" />
+            <span>Холодильник</span>
+          </button>
+          <button
+            onClick={() => setShowVoiceModal(true)}
+            className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft/60 px-3.5 py-1.5 text-xs font-semibold text-primary shadow-xs transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
+            title="Голосовой ассистент"
+            aria-label="Голосовой ассистент"
+          >
+            <Mic className="h-3.5 w-3.5" />
+            <span>Голос</span>
+          </button>
+        </div>
       </div>
 
       {/* Шапка с датой */}
@@ -94,6 +108,17 @@ export default function DayPage() {
         </button>
       </header>
 
+      {/* AI Брифинг дня (Утренний / Вечерний) */}
+      <div className="mb-4">
+        <DailyBriefingCard
+          dateKey={dateKey}
+          consumedTotals={day?.totals ?? { calories: 0, proteinG: 0, fatG: 0, carbsG: 0 }}
+          calorieGoal={targetCalories}
+          macroTargets={macroTargets}
+          userName={profile?.display_name}
+        />
+      </div>
+
       {/* Умные контекстные предупреждения */}
       <SmartAlertBanner
         alert={activeAlert}
@@ -122,19 +147,19 @@ export default function DayPage() {
             <MacroBar
               label="Белки"
               value={day?.totals.proteinG ?? 0}
-              target={macroTargets.protein}
+              target={macroTargets.proteinG}
               color="protein"
             />
             <MacroBar
               label="Жиры"
               value={day?.totals.fatG ?? 0}
-              target={macroTargets.fat}
+              target={macroTargets.fatG}
               color="fat"
             />
             <MacroBar
               label="Углеводы"
               value={day?.totals.carbsG ?? 0}
-              target={macroTargets.carbs}
+              target={macroTargets.carbsG}
               color="carbs"
             />
             {isToday && (
@@ -178,15 +203,11 @@ export default function DayPage() {
           <MacroBalancer
             targetCalories={targetCalories}
             remainingCalories={Math.max(0, Math.round(targetCalories - (day?.totals.calories ?? 0)))}
-            targetMacros={{
-              proteinG: macroTargets.protein,
-              fatG: macroTargets.fat,
-              carbsG: macroTargets.carbs,
-            }}
+            targetMacros={macroTargets}
             remainingMacros={{
-              proteinG: Math.max(0, Math.round(macroTargets.protein - (day?.totals.proteinG ?? 0))),
-              fatG: Math.max(0, Math.round(macroTargets.fat - (day?.totals.fatG ?? 0))),
-              carbsG: Math.max(0, Math.round(macroTargets.carbs - (day?.totals.carbsG ?? 0))),
+              proteinG: Math.max(0, Math.round(macroTargets.proteinG - (day?.totals.proteinG ?? 0))),
+              fatG: Math.max(0, Math.round(macroTargets.fatG - (day?.totals.fatG ?? 0))),
+              carbsG: Math.max(0, Math.round(macroTargets.carbsG - (day?.totals.carbsG ?? 0))),
             }}
             dateKey={dateKey}
             isOpen={showBalancer}
@@ -200,11 +221,7 @@ export default function DayPage() {
             dateKey={dateKey}
             consumedTotals={day?.totals ?? { calories: 0, proteinG: 0, fatG: 0, carbsG: 0 }}
             targetCalories={targetCalories}
-            macroTargets={{
-              proteinG: macroTargets.protein,
-              fatG: macroTargets.fat,
-              carbsG: macroTargets.carbs,
-            }}
+            macroTargets={macroTargets}
             eatenFoodNames={[
               ...new Set(
                 (day?.meals ?? []).flatMap((m) =>
@@ -213,6 +230,19 @@ export default function DayPage() {
               ),
             ]}
             onOpenBalancer={() => setShowBalancer(true)}
+          />
+          <FridgeRecipeModal
+            isOpen={showFridgeModal}
+            onClose={() => setShowFridgeModal(false)}
+            dateKey={dateKey}
+            remainingCalories={targetCalories - (day?.totals.calories ?? 0)}
+            remainingTotals={{
+              calories: Math.max(0, targetCalories - (day?.totals.calories ?? 0)),
+              proteinG: Math.max(0, macroTargets.proteinG - (day?.totals.proteinG ?? 0)),
+              fatG: Math.max(0, macroTargets.fatG - (day?.totals.fatG ?? 0)),
+              carbsG: Math.max(0, macroTargets.carbsG - (day?.totals.carbsG ?? 0)),
+            }}
+            macroTargets={macroTargets}
           />
         </>
       )}

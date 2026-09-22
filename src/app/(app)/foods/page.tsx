@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, Plus, Check, Loader2, X } from "lucide-react";
+import { Search, Plus, Check, Loader2, X, Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { macrosForWeight } from "@/lib/nutrition/macros";
 import { todayKey } from "@/lib/utils";
@@ -12,6 +12,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { MealType } from "@/types/database";
 import { saveMeal } from "@/lib/meals";
 import { resolveMealType, nutritionSchema, weightSchema, foodNameSchema } from "@/lib/validation";
+import { usePersonalFoodGraph } from "@/hooks/usePersonalFoodGraph";
+import { getSmartFoodSuggestions } from "@/lib/nutrition/personalization";
 
 export default function FoodsPage() {
   return (
@@ -64,6 +66,12 @@ function FoodsFlow() {
   const externalQuery = useRef("");
   const pendingMeal = useRef<string | null>(null);
   const addLock = useRef(false);
+
+  const { data: foodGraph } = usePersonalFoodGraph();
+  const smartSuggestions = useMemo(() => {
+    if (!foodGraph) return [];
+    return getSmartFoodSuggestions(foodGraph, mealType);
+  }, [foodGraph, mealType]);
 
   // Создание своего продукта
   const [showCustom, setShowCustom] = useState(false);
@@ -384,11 +392,52 @@ function FoodsFlow() {
               <Plus className="h-4 w-4" /> «{q}» не найден — создать?
             </button>
           )}
-          {results === null && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Начните вводить название, чтобы найти продукт. Например, «гречка»
-              или «курица».
-            </p>
+          {results === null && !q.trim() && (
+            <div className="space-y-4 py-2">
+              {smartSuggestions.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    <span>Часто на {mealType === "breakfast" ? "завтрак" : mealType === "lunch" ? "обед" : mealType === "dinner" ? "ужин" : "перекус"}:</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {smartSuggestions.map((food) => (
+                      <button
+                        key={food.foodName}
+                        onClick={() => {
+                          pendingMeal.current = null;
+                          setSelected({
+                            id: `freq:${food.foodName}`,
+                            name: food.foodName,
+                            name_local: food.foodName,
+                            calories_per_100g: food.calories_per_100g,
+                            protein_per_100g: food.protein_per_100g,
+                            fat_per_100g: food.fat_per_100g,
+                            carbs_per_100g: food.carbs_per_100g,
+                          });
+                          setWeight(String(food.avgPortionGrams));
+                        }}
+                        className="flex w-full items-center justify-between rounded-2xl bg-card p-3.5 text-left shadow-xs transition-colors hover:bg-muted/70"
+                      >
+                        <div>
+                          <div className="font-medium text-sm">{food.foodName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            обычно ~{food.avgPortionGrams} г · Б {food.protein_g} · Ж {food.fat_g} · У {food.carbs_g}
+                          </div>
+                        </div>
+                        <div className="text-sm font-bold tabular-nums text-primary">
+                          {food.avgCalories} ккал
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="py-4 text-center text-xs text-muted-foreground">
+                Начните вводить название, чтобы найти любой продукт в базе.
+              </p>
+            </div>
           )}
 
           {/* Форма нового продукта */}
