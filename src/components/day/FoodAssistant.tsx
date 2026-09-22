@@ -66,7 +66,7 @@ export function FoodAssistant({ onClose }: { onClose: () => void }) {
   return (
     <section className="mt-4 w-full rounded-3xl bg-card p-4 shadow-sm" aria-label="Ассистент по питанию">
       <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><span className="rounded-full bg-primary-soft p-2 text-primary"><Sparkles className="h-4 w-4" /></span><h2 className="font-semibold">Помощник по питанию</h2></div><button onClick={onClose} aria-label="Закрыть ассистента" className="rounded-full p-2 hover:bg-muted"><X className="h-4 w-4" /></button></div>
-      <div ref={listRef} className="max-h-[30rem] space-y-3 overflow-y-auto" aria-live="polite">
+      <div ref={listRef} className="max-h-[30rem] space-y-3 overflow-y-auto no-scrollbar" aria-live="polite">
         {messages.map((message, index) => message.role === "user" ? (
           <p key={index} className="ml-10 rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">{message.content}</p>
         ) : <AdviceCard key={index} advice={message.advice} fallback={message.content} />)}

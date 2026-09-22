@@ -105,12 +105,35 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Скрываем скроллбар, но оставляем прокрутку */
+/* Полное скрытие нативных скроллбаров (ползунков) по всему приложению на всех браузерах и платформах */
+html,
+body,
+*,
+*::before,
+*::after {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar,
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+/* Утилита .no-scrollbar */
 .no-scrollbar::-webkit-scrollbar {
-  display: none;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 .no-scrollbar {
-  scrollbar-width: none;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 @keyframes pulse-soft {

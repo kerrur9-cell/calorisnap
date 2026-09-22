@@ -568,7 +568,10 @@ export function VoiceAssistantModal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-md rounded-t-3xl bg-card p-5 shadow-2xl sm:rounded-3xl max-h-[85vh] overflow-y-auto space-y-4">
+      <div className="w-full max-w-md rounded-t-3xl bg-card p-5 shadow-2xl sm:rounded-3xl max-h-[85vh] overflow-y-auto no-scrollbar space-y-4">
+        {/* iOS-стиль индикатор свайпа вниз */}
+        <div className="mx-auto -mt-1 mb-2 h-1.5 w-12 rounded-full bg-muted-foreground/20 sm:hidden shrink-0" />
+
         <header className="flex items-center justify-between border-b border-border/50 pb-3">
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-primary-soft p-2 text-primary">
