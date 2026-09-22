@@ -24,6 +24,25 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    // Автоматическая перезагрузка при выходе новой версии приложения (ChunkLoadError)
+    const handleChunkError = (event: ErrorEvent | PromiseRejectionEvent) => {
+      const message =
+        "message" in event
+          ? event.message
+          : String((event as PromiseRejectionEvent).reason?.message || (event as PromiseRejectionEvent).reason || "");
+      if (/Loading chunk .* failed/i.test(message) || /ChunkLoadError/i.test(message)) {
+        const lastReload = Number(sessionStorage.getItem("last_chunk_reload") || "0");
+        const now = Date.now();
+        if (now - lastReload > 8_000) {
+          sessionStorage.setItem("last_chunk_reload", String(now));
+          window.location.reload();
+        }
+      }
+    };
+
+    window.addEventListener("error", handleChunkError);
+    window.addEventListener("unhandledrejection", handleChunkError);
+
     if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
       void (async () => {
         const registrations = await navigator.serviceWorker.getRegistrations();
@@ -46,7 +65,11 @@ export function Providers({ children }: { children: ReactNode }) {
       if (event === "SIGNED_OUT" || (previousId !== undefined && previousId !== id)) queryClient.clear();
       previousId = id;
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      window.removeEventListener("error", handleChunkError);
+      window.removeEventListener("unhandledrejection", handleChunkError);
+      subscription.unsubscribe();
+    };
   }, [queryClient]);
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

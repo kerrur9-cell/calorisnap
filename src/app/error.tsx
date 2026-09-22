@@ -12,13 +12,26 @@ export default function ErrorPage({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const isChunkError =
+    /Loading chunk .* failed/i.test(error?.message || "") ||
+    /ChunkLoadError/i.test(error?.message || "");
+
   useEffect(() => {
     console.error("CaloriSnap render failure", {
       message: error.message,
       digest: error.digest ?? "client",
       stack: error.stack,
     });
-  }, [error]);
+
+    if (isChunkError) {
+      const lastReload = Number(sessionStorage.getItem("last_chunk_reload") || "0");
+      const now = Date.now();
+      if (now - lastReload > 8_000) {
+        sessionStorage.setItem("last_chunk_reload", String(now));
+        window.location.reload();
+      }
+    }
+  }, [error, isChunkError]);
 
   const handleSignOut = async () => {
     try {
@@ -28,6 +41,14 @@ export default function ErrorPage({
       // ignore
     }
     window.location.href = "/login";
+  };
+
+  const handleReload = () => {
+    if (isChunkError) {
+      window.location.reload();
+    } else {
+      reset();
+    }
   };
 
   return (
@@ -42,31 +63,35 @@ export default function ErrorPage({
 
         <div>
           <h1 className="text-xl font-extrabold text-foreground">
-            Не удалось открыть страницу
+            {isChunkError ? "Вышло обновление приложения" : "Не удалось открыть страницу"}
           </h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            {error?.message || "Проверьте подключение и попробуйте ещё раз."}
+            {isChunkError
+              ? "Загружаем свежую версию CaloriSnap... Нажмите кнопку ниже, если страница не обновилась автоматически."
+              : (error?.message || "Проверьте подключение и попробуйте ещё раз.")}
           </p>
         </div>
 
         <div className="space-y-2 pt-2">
           <button
-            onClick={reset}
+            onClick={handleReload}
             className="btn-glossy spring-press flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-md"
           >
-            <RefreshCw className="h-4 w-4" /> Повторить попытку
+            <RefreshCw className="h-4 w-4" /> {isChunkError ? "Обновить приложение" : "Повторить попытку"}
           </button>
 
-          <button
-            onClick={handleSignOut}
-            className="btn-glossy spring-press flex w-full items-center justify-center gap-2 rounded-2xl bg-muted/80 border border-border/60 py-2.5 text-xs font-semibold text-foreground hover:bg-muted"
-          >
-            <LogIn className="h-3.5 w-3.5" /> Войти заново в аккаунт
-          </button>
+          {!isChunkError && (
+            <button
+              onClick={handleSignOut}
+              className="btn-glossy spring-press flex w-full items-center justify-center gap-2 rounded-2xl bg-muted/80 border border-border/60 py-2.5 text-xs font-semibold text-foreground hover:bg-muted"
+            >
+              <LogIn className="h-3.5 w-3.5" /> Войти заново в аккаунт
+            </button>
+          )}
 
           <Link
             href="/day"
-            onClick={reset}
+            onClick={handleReload}
             className="flex items-center justify-center gap-1.5 pt-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <Home className="h-3.5 w-3.5" /> Вернуться на главную
