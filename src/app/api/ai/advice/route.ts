@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { sumTotals, type NutritionRow } from "@/lib/nutrition/macros";
 import { decideAdvice, detectAdvicePreference, validateAdvice } from "@/lib/nutrition/advice";
+import { generateGeminiJson } from "@/lib/ai/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 28;
@@ -43,8 +44,12 @@ function previousRecommendationNames(messages: z.infer<typeof requestSchema>["me
 }
 
 export async function POST(request: Request) {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) return NextResponse.json({ error: "Ассистент пока не настроен" }, { status: 503 });
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.GEMINI_FALLBACK_API_KEY);
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!hasGemini && !groqKey) {
+    return NextResponse.json({ error: "Ассистент пока не настроен" }, { status: 503 });
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Войдите в аккаунт" }, { status: 401 });
@@ -75,24 +80,51 @@ export async function POST(request: Request) {
       ? "Пользователь хочет ленивый вариант: максимум 5 минут, без духовки и сложного приготовления."
       : "";
   const system = `Ты — русскоязычный помощник по питанию CaloriSnap. Сервер рассчитал: цель ${targetCalories} ккал; съедено ${Math.round(totals.calories)} ккал; остаток ${decision.caloriesRemaining} ккал; осталось Б ${decision.macrosRemaining.proteinG} г, Ж ${decision.macrosRemaining.fatG} г, У ${decision.macrosRemaining.carbsG} г; режим ${decision.mode}; уже съедено: ${eaten}. ${preferenceRule} Уже предлагались в этом диалоге: ${previousNames.join(", ") || "нет"}; не повторяй их. Верни только JSON по схеме. При normal дай только столько вариантов, сколько реально отвечает последнему сообщению (обычно 1–2, максимум 3), каждый не больше остатка. Не пиши шаблонные вступления, не пересказывай все макросы, не предлагай один и тот же набор еды при разных вопросах. При goal_reached и over_limit recommendations обязан быть пустым: не предлагай еду и не говори, что перекус ничего не испортит. В message — одно короткое человеческое предложение, highlights — только полезные короткие детали (0–2). Режим и математику не меняй.`;
-  // Two bounded attempts must fit inside the Netlify function limit. A fast 70B
-  // model keeps follow-up questions responsive instead of leaving the browser
-  // with a platform timeout.
-  const models = [process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile", "openai/gpt-oss-20b"];
-  for (const model of [...new Set(models)]) {
+
+  if (hasGemini) {
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...body.messages, ...(body.messages.length ? [] : [{ role: "user", content: "Что мне можно съесть сегодня?" }])], response_format: responseFormat, reasoning_effort: "low", temperature: 0.3, max_completion_tokens: 1400 }),
-        signal: AbortSignal.timeout(12_000),
+      const chatMessages = body.messages.length > 0
+        ? body.messages
+        : [{ role: "user" as const, content: "Что мне можно съесть сегодня?" }];
+
+      const contents = chatMessages.map((m) => ({
+        role: m.role === "user" ? ("user" as const) : ("model" as const),
+        parts: [{ text: m.content }],
+      }));
+
+      const raw = await generateGeminiJson({
+        systemPrompt: system,
+        contents,
+        temperature: 0.3,
       });
-      if (!response.ok) continue;
-      const json = await response.json();
-      const content = json?.choices?.[0]?.message?.content;
-      if (typeof content !== "string") continue;
-      const advice = validateAdvice(JSON.parse(content), decision, previousNames);
-      if (advice) return NextResponse.json({ advice }, { headers: { "Cache-Control": "private, no-store" } });
-    } catch { /* Retry once with the backup Groq text model. */ }
+
+      const advice = validateAdvice(raw, decision, previousNames);
+      if (advice) {
+        return NextResponse.json({ advice }, { headers: { "Cache-Control": "private, no-store" } });
+      }
+    } catch (err) {
+      console.error("Gemini advice error:", err);
+    }
   }
-  return NextResponse.json({ error: "Groq не ответил. Нажмите «Повторить»." }, { status: 503 });
+
+  if (groqKey) {
+    const models = [process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile", "openai/gpt-oss-20b"];
+    for (const model of [...new Set(models)]) {
+      try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST", headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...body.messages, ...(body.messages.length ? [] : [{ role: "user", content: "Что мне можно съесть сегодня?" }])], response_format: responseFormat, reasoning_effort: "low", temperature: 0.3, max_completion_tokens: 1400 }),
+          signal: AbortSignal.timeout(12_000),
+        });
+        if (!response.ok) continue;
+        const json = await response.json();
+        const content = json?.choices?.[0]?.message?.content;
+        if (typeof content !== "string") continue;
+        const advice = validateAdvice(JSON.parse(content), decision, previousNames);
+        if (advice) return NextResponse.json({ advice }, { headers: { "Cache-Control": "private, no-store" } });
+      } catch { /* Retry once with the backup Groq text model. */ }
+    }
+  }
+
+  return NextResponse.json({ error: "Ассистент временно не ответил. Нажмите «Повторить»." }, { status: 503 });
 }

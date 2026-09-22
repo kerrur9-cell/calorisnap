@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { generateGeminiJson } from "@/lib/ai/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -19,40 +20,10 @@ const itemSchema = z.object({
   carbs_g: z.number().finite().nonnegative().max(500),
 });
 
-const responseFormat = {
-  type: "json_schema",
-  json_schema: {
-    name: "parsed_voice_meal",
-    strict: true,
-    schema: {
-      type: "object",
-      properties: {
-        suggestedMealType: {
-          type: "string",
-          enum: ["breakfast", "lunch", "dinner", "snack"],
-        },
-        items: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              weight_grams: { type: "number" },
-              calories: { type: "number" },
-              protein_g: { type: "number" },
-              fat_g: { type: "number" },
-              carbs_g: { type: "number" },
-            },
-            required: ["name", "weight_grams", "calories", "protein_g", "fat_g", "carbs_g"],
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ["suggestedMealType", "items"],
-      additionalProperties: false,
-    },
-  },
-};
+const voiceResponseSchema = z.object({
+  suggestedMealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).optional(),
+  items: z.array(itemSchema).default([]),
+});
 
 const SYSTEM_PROMPT = `Ты — профессиональный пищевой парсер CaloriSnap.
 Твоя задача — преобразовать голосовую фразу пользователя на русском языке в структурированный список продуктов с реалистичными граммовками и КБЖУ.
@@ -63,7 +34,20 @@ const SYSTEM_PROMPT = `Ты — профессиональный пищевой 
 - 1 тарелка каши / супа = 200-250 г
 - 1 яблоко / банан = 120-150 г
 - 1 порция мяса / филе = 120-180 г
-Верни ТОЛЬКО валидный JSON со списком продуктов и типом приёма пищи.`;
+Верни ТОЛЬКО валидный JSON:
+{
+  "suggestedMealType": "breakfast" | "lunch" | "dinner" | "snack",
+  "items": [
+    {
+      "name": "Название",
+      "weight_grams": 100,
+      "calories": 150,
+      "protein_g": 5,
+      "fat_g": 5,
+      "carbs_g": 20
+    }
+  ]
+}`;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -79,69 +63,91 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
   }
 
-  const key = process.env.GROQ_API_KEY;
-  if (!key) {
-    // Резервный парсинг без LLM при отсутствии ключа
-    return NextResponse.json({
-      suggestedMealType: body.defaultMealType ?? "snack",
-      items: [
-        {
-          name: body.transcript.slice(0, 50),
-          weight_grams: 100,
-          calories: 150,
-          protein_g: 5,
-          fat_g: 5,
-          carbs_g: 20,
-        },
-      ],
-    });
-  }
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.GEMINI_FALLBACK_API_KEY);
+  const userPrompt = `Пользователь сказал: "${body.transcript}". Предпочтительный приём пищи: ${body.defaultMealType ?? "auto"}. Распознай продукты и граммовки.`;
 
-  try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.GROQ_CHAT_MODEL ?? "openai/gpt-oss-20b",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `Пользователь сказал: "${body.transcript}". Тип по умолчанию: ${body.defaultMealType ?? "auto"}. Распознай продукты.`,
-          },
-        ],
-        response_format: responseFormat,
+  if (hasGemini) {
+    try {
+      const parsed = await generateGeminiJson({
+        systemPrompt: SYSTEM_PROMPT,
+        prompt: userPrompt,
+        schema: voiceResponseSchema,
         temperature: 0.1,
-        max_completion_tokens: 1000,
-      }),
-      signal: AbortSignal.timeout(18_000),
-    });
+      });
 
-    if (!response.ok) {
-      throw new Error(`Groq status ${response.status}`);
+      const items = parsed.items.length > 0
+        ? parsed.items
+        : [
+            {
+              name: body.transcript.slice(0, 50),
+              weight_grams: 100,
+              calories: 150,
+              protein_g: 5,
+              fat_g: 5,
+              carbs_g: 20,
+            },
+          ];
+
+      return NextResponse.json({
+        suggestedMealType: parsed.suggestedMealType ?? body.defaultMealType ?? "snack",
+        items,
+      });
+    } catch (err) {
+      console.error("Gemini voice parse error:", err);
     }
-
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error("Empty model response");
-
-    const parsed = JSON.parse(content);
-    const validItems = z.array(itemSchema).parse(parsed.items);
-    const suggestedMealType = parsed.suggestedMealType ?? body.defaultMealType ?? "snack";
-
-    return NextResponse.json({
-      suggestedMealType,
-      items: validItems,
-    });
-  } catch {
-    return NextResponse.json(
-      {
-        error: "Не удалось точно распознать состав еды голосом. Попробуйте сформулировать чётче или добавьте продукт через поиск.",
-      },
-      { status: 502 }
-    );
   }
+
+  // Резервный Groq, если настроен ключ
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${groqKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+          max_completion_tokens: 1000,
+        }),
+        signal: AbortSignal.timeout(18_000),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data?.choices?.[0]?.message?.content;
+        if (content) {
+          const parsed = voiceResponseSchema.parse(JSON.parse(content));
+          return NextResponse.json({
+            suggestedMealType: parsed.suggestedMealType ?? body.defaultMealType ?? "snack",
+            items: parsed.items,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Groq voice parse error:", err);
+    }
+  }
+
+  // Безопасный fallback, если AI недоступен
+  return NextResponse.json({
+    suggestedMealType: body.defaultMealType ?? "snack",
+    items: [
+      {
+        name: body.transcript.slice(0, 50),
+        weight_grams: 100,
+        calories: 150,
+        protein_g: 5,
+        fat_g: 5,
+        carbs_g: 20,
+      },
+    ],
+  });
 }

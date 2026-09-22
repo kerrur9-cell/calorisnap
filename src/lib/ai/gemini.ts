@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { FOOD_ANALYSIS_PROMPT } from "./prompts";
 import { safeParseAnalysis, type AiAnalysisResponse } from "./schema";
 
@@ -58,7 +59,18 @@ async function callGemini(
       }
 
       const json = await res.json();
-      const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const parts = json?.candidates?.[0]?.content?.parts;
+      let rawText = "";
+      if (Array.isArray(parts)) {
+        for (const part of parts) {
+          if (typeof part?.text === "string" && !part?.thought) {
+            rawText += part.text;
+          }
+        }
+        if (!rawText && parts[0]?.text) {
+          rawText = parts[0].text;
+        }
+      }
       if (!rawText) {
         return { ok: false, status: 200, message: "Gemini вернул пустой ответ" };
       }
@@ -173,3 +185,88 @@ export async function analyzeFoodPhoto(
 
   return rebalanceWeights(parsed.data, input.totalWeightGrams);
 }
+
+export interface GeminiJsonOptions<T = unknown> {
+  systemPrompt?: string;
+  prompt?: string;
+  contents?: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>;
+  schema?: z.ZodType<T>;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+/**
+ * Универсальная генерация структурированного JSON через Gemini.
+ * Автоматически использует основной ключ/модель, делает fallback при сбоях,
+ * снимает markdown ```json и проверяет Zod схему.
+ */
+export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions<T>): Promise<T> {
+  const primaryKey = process.env.GEMINI_API_KEY;
+  const fallbackKey = process.env.GEMINI_FALLBACK_API_KEY;
+  const apiKey = primaryKey || fallbackKey;
+
+  if (!apiKey) {
+    throw new Error("AI не настроен: отсутствует GEMINI_API_KEY");
+  }
+
+  const contents = options.contents && options.contents.length > 0
+    ? options.contents
+    : [
+        {
+          role: "user" as const,
+          parts: [{ text: options.prompt ?? "" }],
+        },
+      ];
+
+  const body: Record<string, unknown> = {
+    contents,
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: options.temperature ?? 0.2,
+      maxOutputTokens: options.maxTokens ?? 4096,
+    },
+  };
+
+  if (options.systemPrompt) {
+    body.systemInstruction = {
+      parts: [{ text: options.systemPrompt }],
+    };
+  }
+
+  let res = await callGemini(body, primaryKey ?? apiKey, GEMINI_PRIMARY_MODEL);
+
+  if (!res.ok && (fallbackKey || GEMINI_FALLBACK_MODEL !== GEMINI_PRIMARY_MODEL)) {
+    res = await callGemini(
+      body,
+      fallbackKey ?? apiKey,
+      GEMINI_FALLBACK_MODEL
+    );
+  }
+
+  if (!res.ok) {
+    throw new Error(res.message);
+  }
+
+  const cleaned = res.text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error(`Модель вернула невалидный JSON: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (options.schema) {
+    const validated = options.schema.safeParse(parsed);
+    if (!validated.success) {
+      throw new Error(`Ответ модели не соответствует схеме: ${validated.error.message}`);
+    }
+    return validated.data;
+  }
+
+  return parsed as T;
+}
+

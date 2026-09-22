@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { generateGeminiJson } from "@/lib/ai/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -36,69 +37,9 @@ const recipeSchema = z.object({
   totalCarbs: z.number().nonnegative(),
 });
 
-const responseFormat = {
-  type: "json_schema",
-  json_schema: {
-    name: "fridge_recipes_response",
-    strict: true,
-    schema: {
-      type: "object",
-      properties: {
-        recipes: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              cookingTimeMinutes: { type: "number" },
-              difficulty: { type: "string", enum: ["easy", "medium"] },
-              ingredients: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    name: { type: "string" },
-                    weight_grams: { type: "number" },
-                    calories: { type: "number" },
-                    protein_g: { type: "number" },
-                    fat_g: { type: "number" },
-                    carbs_g: { type: "number" },
-                  },
-                  required: ["name", "weight_grams", "calories", "protein_g", "fat_g", "carbs_g"],
-                  additionalProperties: false,
-                },
-              },
-              instructions: {
-                type: "array",
-                items: { type: "string" },
-              },
-              totalCalories: { type: "number" },
-              totalProtein: { type: "number" },
-              totalFat: { type: "number" },
-              totalCarbs: { type: "number" },
-            },
-            required: [
-              "title",
-              "description",
-              "cookingTimeMinutes",
-              "difficulty",
-              "ingredients",
-              "instructions",
-              "totalCalories",
-              "totalProtein",
-              "totalFat",
-              "totalCarbs",
-            ],
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ["recipes"],
-      additionalProperties: false,
-    },
-  },
-};
+const recipesResponseSchema = z.object({
+  recipes: z.array(recipeSchema).min(1),
+});
 
 const SYSTEM_PROMPT = `Ты — профессиональный шеф-повар и нутрициолог CaloriSnap.
 Твоя задача — составить 2 практичных, простых и вкусных рецепта строго из ингредиентов пользователя (или с добавлением базовых специй, капли масла или соли/воды).
@@ -106,7 +47,25 @@ const SYSTEM_PROMPT = `Ты — профессиональный шеф-пова
 1. Калорийность КАЖДОГО рецепта НЕ ДОЛЖНА превышать указанный лимит оставшихся калорий (или быть в разумных пределах 250-600 ккал, если лимит отрицательный/слишком мал).
 2. Подбери ТОЧНЫЕ граммовки для каждого ингредиента так, чтобы сумма калорий и БЖУ всех ингредиентов равнялась totalCalories, totalProtein, totalFat, totalCarbs.
 3. Инструкции должны быть пошаговыми, лаконичными и понятными.
-4. Отвечай ТОЛЬКО валидным JSON по предоставленной схеме.`;
+4. Отвечай ТОЛЬКО валидным JSON формата:
+{
+  "recipes": [
+    {
+      "title": "Название",
+      "description": "Описание",
+      "cookingTimeMinutes": 15,
+      "difficulty": "easy",
+      "ingredients": [
+        { "name": "Продукт", "weight_grams": 100, "calories": 150, "protein_g": 10, "fat_g": 5, "carbs_g": 15 }
+      ],
+      "instructions": ["Шаг 1", "Шаг 2"],
+      "totalCalories": 350,
+      "totalProtein": 25,
+      "totalFat": 10,
+      "totalCarbs": 35
+    }
+  ]
+}`;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -123,42 +82,7 @@ export async function POST(request: NextRequest) {
   }
 
   const calorieBudget = Math.max(200, Math.min(1200, Math.round(body.remainingCalories)));
-  const key = process.env.GROQ_API_KEY;
-
-  if (!key) {
-    // Резервный рецепт без API ключа
-    const firstIng = body.ingredients[0] ?? "Продукты";
-    return NextResponse.json({
-      recipes: [
-        {
-          title: `Быстрое блюдо из ${firstIng}`,
-          description: "Простой рецепт на скорую руку с контролем калорий",
-          cookingTimeMinutes: 15,
-          difficulty: "easy",
-          ingredients: body.ingredients.slice(0, 3).map((ing, idx) => ({
-            name: ing,
-            weight_grams: 100,
-            calories: Math.round(calorieBudget / Math.min(body.ingredients.length, 3)),
-            protein_g: idx === 0 ? 15 : 4,
-            fat_g: 5,
-            carbs_g: 10,
-          })),
-          instructions: [
-            "Подготовьте и промойте ингредиенты.",
-            "Нарежьте удобными кусочками.",
-            "Обжарьте на сухой антипригарной сковороде или потушите с небольшим количеством воды до готовности.",
-          ],
-          totalCalories: calorieBudget,
-          totalProtein: 25,
-          totalFat: 12,
-          totalCarbs: 25,
-        },
-      ],
-    });
-  }
-
-  try {
-    const userPrompt = `Ингредиенты в наличии: ${body.ingredients.join(", ")}.
+  const userPrompt = `Ингредиенты в наличии: ${body.ingredients.join(", ")}.
 Лимит калорий на блюдо: до ${calorieBudget} ккал.
 Остаток белка: ${Math.max(0, Math.round(body.remainingProtein ?? 30))} г.
 Остаток жиров: ${Math.max(0, Math.round(body.remainingFat ?? 20))} г.
@@ -166,45 +90,90 @@ export async function POST(request: NextRequest) {
 Приём пищи: ${body.mealType ?? "обед / ужин"}.
 Предложи 2 отличных рецепта, использующих эти продукты с точными граммовками.`;
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.GROQ_CHAT_MODEL ?? "openai/gpt-oss-20b",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: responseFormat,
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.GEMINI_FALLBACK_API_KEY);
+
+  if (hasGemini) {
+    try {
+      const parsed = await generateGeminiJson({
+        systemPrompt: SYSTEM_PROMPT,
+        prompt: userPrompt,
+        schema: recipesResponseSchema,
         temperature: 0.3,
-        max_completion_tokens: 1500,
-      }),
-      signal: AbortSignal.timeout(20_000),
-    });
+      });
 
-    if (!response.ok) {
-      throw new Error(`Groq status ${response.status}`);
+      return NextResponse.json({
+        recipes: parsed.recipes,
+      });
+    } catch (err) {
+      console.error("Gemini fridge recipe error:", err);
     }
-
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error("Empty model response");
-
-    const parsed = JSON.parse(content);
-    const validRecipes = z.array(recipeSchema).parse(parsed.recipes);
-
-    return NextResponse.json({
-      recipes: validRecipes,
-    });
-  } catch {
-    return NextResponse.json(
-      {
-        error: "Не удалось сформировать рецепты. Попробуйте изменить список продуктов.",
-      },
-      { status: 502 }
-    );
   }
+
+  // Резервный Groq, если настроен ключ
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${groqKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+          max_completion_tokens: 1500,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data?.choices?.[0]?.message?.content;
+        if (content) {
+          const parsed = recipesResponseSchema.parse(JSON.parse(content));
+          return NextResponse.json({
+            recipes: parsed.recipes,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Groq fridge recipe error:", err);
+    }
+  }
+
+  // Резервный рецепт без API ключа при сбое
+  const firstIng = body.ingredients[0] ?? "Продукты";
+  return NextResponse.json({
+    recipes: [
+      {
+        title: `Быстрое блюдо из ${firstIng}`,
+        description: "Простой рецепт на скорую руку с контролем калорий",
+        cookingTimeMinutes: 15,
+        difficulty: "easy",
+        ingredients: body.ingredients.slice(0, 3).map((ing, idx) => ({
+          name: ing,
+          weight_grams: 100,
+          calories: Math.round(calorieBudget / Math.min(body.ingredients.length, 3)),
+          protein_g: idx === 0 ? 15 : 4,
+          fat_g: 5,
+          carbs_g: 10,
+        })),
+        instructions: [
+          "Подготовьте и промойте ингредиенты.",
+          "Нарежьте удобными кусочками.",
+          "Обжарьте на сухой антипригарной сковороде или потушите с небольшим количеством воды до готовности.",
+        ],
+        totalCalories: calorieBudget,
+        totalProtein: 25,
+        totalFat: 12,
+        totalCarbs: 25,
+      },
+    ],
+  });
 }
