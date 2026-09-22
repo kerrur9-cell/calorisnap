@@ -8,11 +8,12 @@ import {
   ChefHat,
   Trophy,
   FlaskConical,
-  TrendingUp,
   ChevronRight,
   Zap,
   Target,
   Star,
+  Flame,
+  BarChart3,
 } from "lucide-react";
 import { useGamification } from "@/hooks/useGamification";
 import { useProfile } from "@/hooks/useProfile";
@@ -219,19 +220,33 @@ export default function HubPage() {
         </div>
       </section>
 
-      {/* Прогноз веса */}
-      <Link href="/stats" className="glass-card glossy-sheen scroll-sway spring-press mb-5 block touch-manipulation rounded-3xl p-5 shadow-md" aria-label="Открыть прогноз веса в статистике">
+      {/* Расход и тренировки */}
+      <Link href="/burn" className="glass-card glossy-sheen scroll-sway spring-press mb-4 block touch-manipulation rounded-3xl p-5 shadow-md border border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-card/70 to-card/90" aria-label="Перейти в раздел расхода калорий и тренировок">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-emerald-500" />
-            <h2 className="font-bold text-foreground">Прогноз веса</h2>
+            <Flame className="h-5 w-5 text-orange-500" />
+            <h2 className="font-bold text-foreground">Расход калорий и тренировки</h2>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Базовый обмен веществ (BMR), дефицит калорий, каталог тренажеров, голосовой ввод и фото-распознавание.
+        </p>
+      </Link>
+
+      {/* Статистика и аналитика */}
+      <Link href="/stats" className="glass-card glossy-sheen scroll-sway-reverse spring-press mb-5 block touch-manipulation rounded-3xl p-5 shadow-md" aria-label="Открыть статистику и графики">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-primary" />
+            <h2 className="font-bold text-foreground">Статистика и прогноз веса</h2>
           </div>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           {profile?.current_weight_kg
-            ? `Текущий вес: ${profile.current_weight_kg} кг. Анализ динамики доступен в разделе статистики.`
-            : "Добавьте вес в профиле, чтобы увидеть прогноз."}
+            ? `Текущий вес: ${profile.current_weight_kg} кг. Анализ динамики, средние калории и прогноз достижения цели.`
+            : "Графики калорий, тренды веса и аналитика."}
         </p>
       </Link>
 

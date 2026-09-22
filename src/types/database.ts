@@ -150,6 +150,23 @@ type Table<Row, Required extends keyof Row> = {
   Relationships: [];
 };
 
+export type WorkoutDbEntry = {
+  id: string;
+  user_id: string;
+  exercise_name: string;
+  category: "cardio" | "strength" | "machine" | "bodyweight";
+  duration_minutes: number | null;
+  sets: number | null;
+  reps: number | null;
+  weight_kg: number | null;
+  calories_burned: number;
+  target_muscles: string[] | null;
+  notes: string | null;
+  equipment_photo_url: string | null;
+  entry_date: string;
+  created_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -160,6 +177,7 @@ export interface Database {
       food_items: Table<FoodItem, "name" | "calories_per_100g" | "protein_per_100g" | "fat_per_100g" | "carbs_per_100g">;
       water_entries: Table<WaterEntry, "user_id" | "amount_ml">;
       ai_feedback: Table<AiFeedback, "user_id" | "ai_prediction" | "was_accepted">;
+      workout_entries: Table<WorkoutDbEntry, "user_id" | "exercise_name">;
     };
     Views: {
       daily_stats: { Row: DailyStat; Relationships: [] };

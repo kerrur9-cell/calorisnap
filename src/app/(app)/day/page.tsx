@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, Camera, Sparkles, Calculator, ChevronDown, Scale } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Camera, Sparkles, Calculator, ChevronDown, Scale, Flame } from "lucide-react";
 import { useDayLog, mealTypeMeta, MEAL_TYPES } from "@/hooks/useDayLog";
+import { useWorkouts } from "@/hooks/useWorkouts";
 import { useProfile } from "@/hooks/useProfile";
 import { CalorieRing } from "@/components/day/CalorieRing";
 import { MacroBar } from "@/components/day/MacroBar";
@@ -54,6 +55,11 @@ export default function DayPage() {
     consumedProtein: day?.totals.proteinG ?? 0,
     isToday,
   });
+
+  const { totalBurnedCalories, energyBalance } = useWorkouts(
+    dateKey,
+    day?.totals.calories ?? 0,
+  );
 
   return (
     <main className="min-h-dvh bg-background px-4 pt-4">
@@ -160,6 +166,41 @@ export default function DayPage() {
                 </button>
               </div>
             )}
+          </section>
+
+          {/* Виджет расхода калорий и дефицита за день */}
+          <section className="mb-4">
+            <Link
+              href="/burn"
+              className="glass-card glossy-sheen spring-press flex items-center justify-between rounded-3xl border border-orange-500/25 bg-gradient-to-r from-orange-500/10 via-card/70 to-card/90 p-4 shadow-sm transition-all hover:border-orange-500/50"
+            >
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-orange-500/15 border border-orange-500/30 p-2.5 text-orange-500 shadow-2xs">
+                  <Flame className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-foreground">
+                      Расход и тренировки
+                    </span>
+                    {totalBurnedCalories > 0 && (
+                      <span className="rounded-full bg-orange-500/20 px-2 py-0.5 text-[10px] font-extrabold text-orange-600 dark:text-orange-400">
+                        +{totalBurnedCalories} ккал
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {energyBalance.netDeficit > 0
+                      ? `Дефицит за сегодня: -${energyBalance.netDeficit} ккал 🔥`
+                      : `Профицит: +${Math.abs(energyBalance.netDeficit)} ккал`}
+                  </div>
+                </div>
+              </div>
+
+              <span className="rounded-full bg-orange-500/15 border border-orange-500/30 px-3 py-1.5 text-xs font-bold text-orange-600 dark:text-orange-400 shrink-0">
+                Записать →
+              </span>
+            </Link>
           </section>
 
           {/* Приёмы пищи */}

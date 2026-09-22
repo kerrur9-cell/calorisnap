@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Camera, Sparkles, BarChart3, User, UtensilsCrossed } from "lucide-react";
+import { Camera, Sparkles, Flame, User, UtensilsCrossed } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/day", label: "День", icon: UtensilsCrossed },
-  { href: "/stats", label: "Статистика", icon: BarChart3 },
+  { href: "/burn", label: "Расход", icon: Flame },
   { href: "/hub", label: "Хаб", icon: Sparkles },
   { href: "/profile", label: "Профиль", icon: User },
 ];
