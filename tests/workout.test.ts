@@ -10,8 +10,7 @@ import { GYM_MACHINES } from "../src/lib/workout/machines";
 describe("Workout & Energy Balance Calculator", () => {
   it("calculates realistic strength calories and prevents overestimation (e.g. barbell squats 4x10 @ 50kg)", () => {
     // Пользователь 55 кг делает "Приседания со штангой, 4 подх. × 10 повт. · 50 кг"
-    // Ранее AI галлюцинировал ~224 ккал (завышено в 4-5 раз)
-    // Реальный физиологический расход: ~45-55 ккал
+    // Реальный физиологический расход: ~30-40 ккал (а не 150-200 ккал)
     const burned = calculateParsedWorkoutCalories({
       exerciseName: "Приседания со штангой",
       category: "strength",
@@ -21,10 +20,26 @@ describe("Workout & Energy Balance Calculator", () => {
       userWeightKg: 55,
     });
 
-    expect(burned).toBeGreaterThanOrEqual(40);
-    expect(burned).toBeLessThanOrEqual(65);
-    // Проверяем, что нет завышенных чисел в сотни калорий
+    expect(burned).toBeGreaterThanOrEqual(28);
+    expect(burned).toBeLessThanOrEqual(45);
     expect(burned).toBeLessThan(100);
+  });
+
+  it("calculates objective leg press calories for heavy weight (4x12 @ 100kg)", () => {
+    // Жим ногами 4 по 12 с весом 100 кг для девушки 55 кг
+    // Объективный расход: ~35-45 ккал (а не галлюцинации LLM на 169 ккал)
+    const burned = calculateParsedWorkoutCalories({
+      exerciseName: "Жим ногами в тренажере",
+      category: "machine",
+      sets: 4,
+      reps: 12,
+      weightKg: 100,
+      userWeightKg: 55,
+    });
+
+    expect(burned).toBeGreaterThanOrEqual(35);
+    expect(burned).toBeLessThanOrEqual(48);
+    expect(burned).toBeLessThan(60);
   });
 
   it("calculates realistic bodyweight glute bridge calories", () => {
@@ -36,8 +51,8 @@ describe("Workout & Energy Balance Calculator", () => {
       userWeightKg: 55,
     });
 
-    expect(burned).toBeGreaterThanOrEqual(30);
-    expect(burned).toBeLessThanOrEqual(50);
+    expect(burned).toBeGreaterThanOrEqual(25);
+    expect(burned).toBeLessThanOrEqual(45);
   });
 
   it("calculates small muscle isolation calories appropriately", () => {
@@ -50,8 +65,8 @@ describe("Workout & Energy Balance Calculator", () => {
       userWeightKg: 55,
     });
 
-    expect(burned).toBeGreaterThanOrEqual(10);
-    expect(burned).toBeLessThanOrEqual(25);
+    expect(burned).toBeGreaterThanOrEqual(7);
+    expect(burned).toBeLessThanOrEqual(18);
   });
 
   it("calculates cardio calories based on MET and duration", () => {

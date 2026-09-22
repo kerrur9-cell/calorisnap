@@ -32,12 +32,13 @@ export function calculateStrengthCalories(params: {
   weightKg: number;
   sets: number;
   reps?: number;
-  intensityFactor?: number; // 1.0 (обычная изоляция) .. 1.5 (тяжелые многосуставные/ноги)
+  intensityFactor?: number; // 1.0 (обычная изоляция) .. 1.4 (тяжелые многосуставные/ноги)
 }): number {
   const { weightKg, sets, intensityFactor = 1.0 } = params;
   if (weightKg <= 0 || sets <= 0) return 0;
-  const caloriesPerSet = weightKg * 0.08 * intensityFactor;
-  return Math.round(caloriesPerSet * sets);
+  // Физиологически обоснованный расход: 0.055–0.085 ккал/кг за подход
+  const caloriesPerSet = weightKg * 0.065 * intensityFactor;
+  return Math.max(5, Math.round(caloriesPerSet * sets));
 }
 
 export interface ParsedWorkoutInput {
@@ -127,39 +128,44 @@ export function calculateParsedWorkoutCalories(input: ParsedWorkoutInput): numbe
   const isCore =
     /пресс|скручиван|планк|гиперэкстенз|кора|abs|crunch|plank/i.test(name);
 
-  // Коэффициент энергозатрат на 1 подход с учетом времени подхода, отдыха и EPOC
-  let baseSetKcalPerKg = 0.12;
+  // Физиологически выверенный коэффициент энергозатрат на 1 подход (работа + отдых + EPOC)
+  let baseSetKcalPerKg = 0.08;
   if (isHeavyLowerBody) {
-    baseSetKcalPerKg = 0.18; // тяжелые ноги/ягодицы (~10 ккал за подход для 55 кг)
+    baseSetKcalPerKg = 0.13; // тяжелые ноги/ягодицы (~7-8 ккал за сет для 55-60 кг)
   } else if (isUpperCompound) {
-    baseSetKcalPerKg = 0.12; // тяги/жимы (~6.5 ккал за подход для 55 кг)
+    baseSetKcalPerKg = 0.085; // тяги/жимы (~4.5-5.5 ккал за сет для 55-60 кг)
   } else if (isIsolation) {
-    baseSetKcalPerKg = 0.075; // изоляция на руки/плечи (~4 ккал за подход)
+    baseSetKcalPerKg = 0.055; // изоляция рук/плеч/бёдер (~2.5-3.5 ккал за сет)
   } else if (isCore) {
-    baseSetKcalPerKg = 0.08; // пресс (~4.5 ккал за подход)
+    baseSetKcalPerKg = 0.05; // пресс/кор (~2-3 ккал за сет)
   }
 
-  // Учет рабочего веса отягощения (штанга/гантели)
+  // Учет рабочего веса отягощения
   let weightBonus = 1.0;
   if (input.weightKg && input.weightKg > 0) {
-    const ratio = Math.min(1.5, input.weightKg / userWeight);
-    weightBonus = 1.0 + ratio * 0.35;
+    // Вес штанги или каретки тренажера добавляет механическую работу, но не линейно:
+    // например, в жиме ногами платформа 100 кг движется под углом 45°
+    const ratio = Math.min(2.0, input.weightKg / userWeight);
+    weightBonus = 1.0 + Math.min(0.35, ratio * 0.18);
   }
 
   // Учет повторений
   let repsBonus = 1.0;
   if (input.reps && input.reps > 0) {
-    if (input.reps > 15) repsBonus = 1.15;
+    if (input.reps > 15) repsBonus = 1.1;
     else if (input.reps < 6) repsBonus = 0.9;
   }
 
   const caloriesPerSet = userWeight * baseSetKcalPerKg * weightBonus * repsBonus;
   const totalCalories = Math.round(caloriesPerSet * sets);
 
-  // Физиологический лимит для ОДНОГО упражнения:
-  // 4 подхода приседаний не могут потратить 200 ккал — потолок 75-80 ккал
-  const maxCap = Math.round(userWeight * (isHeavyLowerBody ? 1.3 : 0.9) * (sets / 4));
-  return Math.min(Math.max(5, totalCalories), Math.max(25, maxCap));
+  // Физиологический лимит для одного упражнения (3–4 подхода не могут сжечь 100+ ккал):
+  // Жим ногами 4x12 100 кг: ~38–45 ккал
+  // Приседания 4x10 50 кг: ~32–40 ккал
+  // Тяга верхнего блока 3x12: ~15–20 ккал
+  // Пресс / изоляция: ~8–15 ккал
+  const maxCap = Math.round(userWeight * (isHeavyLowerBody ? 0.85 : 0.55) * (sets / 4));
+  return Math.min(Math.max(5, totalCalories), Math.max(15, maxCap));
 }
 
 /**
