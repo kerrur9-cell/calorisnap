@@ -49,7 +49,7 @@ export function useGamification() {
         },
       });
     },
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1000,
     enabled: Boolean(profile?.id),
   });
 }

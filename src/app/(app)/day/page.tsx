@@ -9,16 +9,34 @@ import { CalorieRing } from "@/components/day/CalorieRing";
 import { MacroBar } from "@/components/day/MacroBar";
 import { MealCard } from "@/components/day/MealCard";
 import { todayKey, addDays } from "@/lib/utils";
-import { FoodAssistant, FoodAssistantBoundary } from "@/components/day/FoodAssistant";
+import { FoodAssistantBoundary } from "@/components/day/FoodAssistant";
 import { sumTotals } from "@/lib/nutrition/macros";
 import type { MealType, MealWithItems } from "@/types/database";
 import { useSmartAlerts } from "@/hooks/useSmartAlerts";
 import { SmartAlertBanner } from "@/components/day/SmartAlertBanner";
-import { MacroBalancer } from "@/components/day/MacroBalancer";
 import { GamificationBadge } from "@/components/app/GamificationBadge";
-import { VoiceAssistantModal } from "@/components/voice/VoiceAssistantModal";
 import { DailyBriefingCard } from "@/components/day/DailyBriefingCard";
-import { FridgeRecipeModal } from "@/components/fridge/FridgeRecipeModal";
+import dynamic from "next/dynamic";
+
+const VoiceAssistantModal = dynamic(
+  () => import("@/components/voice/VoiceAssistantModal").then((mod) => mod.VoiceAssistantModal),
+  { ssr: false }
+);
+
+const FridgeRecipeModal = dynamic(
+  () => import("@/components/fridge/FridgeRecipeModal").then((mod) => mod.FridgeRecipeModal),
+  { ssr: false }
+);
+
+const MacroBalancer = dynamic(
+  () => import("@/components/day/MacroBalancer").then((mod) => mod.MacroBalancer),
+  { ssr: false }
+);
+
+const FoodAssistant = dynamic(
+  () => import("@/components/day/FoodAssistant").then((mod) => mod.FoodAssistant),
+  { ssr: false }
+);
 
 /**
  * Главный экран: день пользователя.
@@ -200,50 +218,61 @@ export default function DayPage() {
           />
 
           {/* Модальное окно Macro Balancer */}
-          <MacroBalancer
-            targetCalories={targetCalories}
-            remainingCalories={Math.max(0, Math.round(targetCalories - (day?.totals.calories ?? 0)))}
-            targetMacros={macroTargets}
-            remainingMacros={{
-              proteinG: Math.max(0, Math.round(macroTargets.proteinG - (day?.totals.proteinG ?? 0))),
-              fatG: Math.max(0, Math.round(macroTargets.fatG - (day?.totals.fatG ?? 0))),
-              carbsG: Math.max(0, Math.round(macroTargets.carbsG - (day?.totals.carbsG ?? 0))),
-            }}
-            dateKey={dateKey}
-            isOpen={showBalancer}
-            onClose={() => setShowBalancer(false)}
-          />
+          {showBalancer && (
+            <MacroBalancer
+              targetCalories={targetCalories}
+              remainingCalories={Math.max(0, Math.round(targetCalories - (day?.totals.calories ?? 0)))}
+              targetMacros={macroTargets}
+              remainingMacros={{
+                proteinG: Math.max(0, Math.round(macroTargets.proteinG - (day?.totals.proteinG ?? 0))),
+                fatG: Math.max(0, Math.round(macroTargets.fatG - (day?.totals.fatG ?? 0))),
+                carbsG: Math.max(0, Math.round(macroTargets.carbsG - (day?.totals.carbsG ?? 0))),
+              }}
+              dateKey={dateKey}
+              isOpen={showBalancer}
+              onClose={() => setShowBalancer(false)}
+            />
+          )}
 
           {/* Модальное окно Голосового ассистента */}
-          <VoiceAssistantModal
-            isOpen={showVoiceModal}
-            onClose={() => setShowVoiceModal(false)}
-            dateKey={dateKey}
-            consumedTotals={day?.totals ?? { calories: 0, proteinG: 0, fatG: 0, carbsG: 0 }}
-            targetCalories={targetCalories}
-            macroTargets={macroTargets}
-            eatenFoodNames={[
-              ...new Set(
-                (day?.meals ?? []).flatMap((m) =>
-                  m.meal_items.map((i) => i.custom_food_name).filter((n): n is string => Boolean(n))
-                )
-              ),
-            ]}
-            onOpenBalancer={() => setShowBalancer(true)}
-          />
-          <FridgeRecipeModal
-            isOpen={showFridgeModal}
-            onClose={() => setShowFridgeModal(false)}
-            dateKey={dateKey}
-            remainingCalories={targetCalories - (day?.totals.calories ?? 0)}
-            remainingTotals={{
-              calories: Math.max(0, targetCalories - (day?.totals.calories ?? 0)),
-              proteinG: Math.max(0, macroTargets.proteinG - (day?.totals.proteinG ?? 0)),
-              fatG: Math.max(0, macroTargets.fatG - (day?.totals.fatG ?? 0)),
-              carbsG: Math.max(0, macroTargets.carbsG - (day?.totals.carbsG ?? 0)),
-            }}
-            macroTargets={macroTargets}
-          />
+          {showVoiceModal && (
+            <VoiceAssistantModal
+              isOpen={showVoiceModal}
+              onClose={() => setShowVoiceModal(false)}
+              dateKey={dateKey}
+              consumedTotals={day?.totals ?? { calories: 0, proteinG: 0, fatG: 0, carbsG: 0 }}
+              targetCalories={targetCalories}
+              macroTargets={macroTargets}
+              eatenFoodNames={[
+                ...new Set(
+                  (day?.meals ?? []).flatMap((m) =>
+                    m.meal_items.map((i) => i.custom_food_name).filter((n): n is string => Boolean(n))
+                  )
+                ),
+              ]}
+              onOpenBalancer={() => {
+                setShowVoiceModal(false);
+                setShowBalancer(true);
+              }}
+            />
+          )}
+
+          {/* Модальное окно AI-холодильника */}
+          {showFridgeModal && (
+            <FridgeRecipeModal
+              isOpen={showFridgeModal}
+              onClose={() => setShowFridgeModal(false)}
+              dateKey={dateKey}
+              remainingCalories={targetCalories - (day?.totals.calories ?? 0)}
+              remainingTotals={{
+                calories: Math.max(0, targetCalories - (day?.totals.calories ?? 0)),
+                proteinG: Math.max(0, macroTargets.proteinG - (day?.totals.proteinG ?? 0)),
+                fatG: Math.max(0, macroTargets.fatG - (day?.totals.fatG ?? 0)),
+                carbsG: Math.max(0, macroTargets.carbsG - (day?.totals.carbsG ?? 0)),
+              }}
+              macroTargets={macroTargets}
+            />
+          )}
         </>
       )}
     </main>

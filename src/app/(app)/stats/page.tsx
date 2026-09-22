@@ -16,12 +16,34 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
 import { addDays, todayKey } from "@/lib/utils";
-import { WeightForecastChart } from "@/components/charts/WeightForecastChart";
 import { calculateTdee } from "@/lib/nutrition/tdee";
 import { SmartInsightsCard } from "@/components/stats/SmartInsightsCard";
-import { WeeklyReviewCard } from "@/components/stats/WeeklyReviewCard";
-import { ExperimentDashboard } from "@/components/experiments/ExperimentDashboard";
 import type { MealHistoryEntry } from "@/lib/nutrition/personalization";
+import dynamic from "next/dynamic";
+
+const WeightForecastChart = dynamic(
+  () => import("@/components/charts/WeightForecastChart").then((m) => m.WeightForecastChart),
+  {
+    ssr: false,
+    loading: () => <div className="h-48 rounded-2xl bg-card border border-border animate-pulse" />,
+  }
+);
+
+const WeeklyReviewCard = dynamic(
+  () => import("@/components/stats/WeeklyReviewCard").then((m) => m.WeeklyReviewCard),
+  {
+    ssr: false,
+    loading: () => <div className="h-32 rounded-2xl bg-card border border-border animate-pulse" />,
+  }
+);
+
+const ExperimentDashboard = dynamic(
+  () => import("@/components/experiments/ExperimentDashboard").then((m) => m.ExperimentDashboard),
+  {
+    ssr: false,
+    loading: () => <div className="h-32 rounded-2xl bg-card border border-border animate-pulse" />,
+  }
+);
 
 export default function StatsPage() {
   return (

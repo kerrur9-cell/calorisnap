@@ -9,8 +9,13 @@ import { createClient } from "@/lib/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { dayQueryKey } from "@/hooks/useDayLog";
 import Image from "next/image";
-import { FoodSwapModal } from "./FoodSwapModal";
+import dynamic from "next/dynamic";
 import type { FoodSwapItem } from "@/lib/nutrition/swap";
+
+const FoodSwapModal = dynamic(
+  () => import("./FoodSwapModal").then((mod) => mod.FoodSwapModal),
+  { ssr: false }
+);
 
 /**
  * Карточка приёма пищи: emoji + список продуктов + сумма по БЖУ.
