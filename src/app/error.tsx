@@ -22,16 +22,7 @@ export default function ErrorPage({
       digest: error.digest ?? "client",
       stack: error.stack,
     });
-
-    if (isChunkError) {
-      const lastReload = Number(sessionStorage.getItem("last_chunk_reload") || "0");
-      const now = Date.now();
-      if (now - lastReload > 8_000) {
-        sessionStorage.setItem("last_chunk_reload", String(now));
-        window.location.reload();
-      }
-    }
-  }, [error, isChunkError]);
+  }, [error]);
 
   const handleSignOut = async () => {
     try {

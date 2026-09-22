@@ -24,40 +24,18 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    // Автоматическая перезагрузка при выходе новой версии приложения (ChunkLoadError)
-    const handleChunkError = (event: ErrorEvent | PromiseRejectionEvent) => {
-      const message =
-        "message" in event
-          ? event.message
-          : String((event as PromiseRejectionEvent).reason?.message || (event as PromiseRejectionEvent).reason || "");
-      if (/Loading chunk .* failed/i.test(message) || /ChunkLoadError/i.test(message)) {
-        const lastReload = Number(sessionStorage.getItem("last_chunk_reload") || "0");
-        const now = Date.now();
-        if (now - lastReload > 8_000) {
-          sessionStorage.setItem("last_chunk_reload", String(now));
-          window.location.reload();
-        }
-      }
-    };
-
-    window.addEventListener("error", handleChunkError);
-    window.addEventListener("unhandledrejection", handleChunkError);
-
+    // Тихо отключаем устаревшие сервис-воркеры без принудительной перезагрузки страницы
     if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
       void (async () => {
         const registrations = await navigator.serviceWorker.getRegistrations();
-        const hadOldWorker = registrations.length > 0;
         await Promise.all(registrations.map((registration) => registration.unregister()));
         if ("caches" in window) {
           const keys = await caches.keys();
           await Promise.all(keys.filter((key) => key.startsWith("calorisnap-")).map((key) => caches.delete(key)));
         }
-        if (hadOldWorker && !sessionStorage.getItem("calorisnap-cache-reset")) {
-          sessionStorage.setItem("calorisnap-cache-reset", "1");
-          window.location.reload();
-        }
       })().catch(() => {});
     }
+
     if (!isSupabaseConfigured()) return;
     let previousId: string | null | undefined;
     const { data: { subscription } } = createClient().auth.onAuthStateChange((event, session) => {
@@ -66,8 +44,6 @@ export function Providers({ children }: { children: ReactNode }) {
       previousId = id;
     });
     return () => {
-      window.removeEventListener("error", handleChunkError);
-      window.removeEventListener("unhandledrejection", handleChunkError);
       subscription.unsubscribe();
     };
   }, [queryClient]);

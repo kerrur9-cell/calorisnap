@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ["lucide-react", "recharts"],
     staleTimes: {
       dynamic: 0,
-      static: 300,
+      static: 0,
     },
   },
   async headers() {

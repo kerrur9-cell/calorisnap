@@ -1,4 +1,4 @@
-const CACHE_NAME = "calorisnap-v2";
+const CACHE_NAME = "calorisnap-v3";
 const STATIC_ASSETS = [
   "/offline.html",
   "/manifest.webmanifest",
