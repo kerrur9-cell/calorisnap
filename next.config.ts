@@ -5,10 +5,6 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],
-    staleTimes: {
-      dynamic: 0,
-      static: 0,
-    },
   },
   async headers() {
     const script = process.env.NODE_ENV === "development" ? "'self' 'unsafe-inline' 'unsafe-eval'" : "'self' 'unsafe-inline'";
