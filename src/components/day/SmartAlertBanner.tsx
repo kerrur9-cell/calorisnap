@@ -31,7 +31,7 @@ export function SmartAlertBanner({ alert, onDismiss, onAction }: SmartAlertBanne
 
   return (
     <aside
-      className={`mb-5 flex flex-col gap-2 rounded-2xl border p-3.5 shadow-xs transition-all ${containerClasses}`}
+      className={`mb-5 flex flex-col gap-2 rounded-3xl border p-4 shadow-md transition-all glossy-card glossy-sheen scroll-sway ${containerClasses}`}
       role="alert"
     >
       <div className="flex items-start justify-between gap-2">

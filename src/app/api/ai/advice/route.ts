@@ -44,6 +44,7 @@ function previousRecommendationNames(messages: z.infer<typeof requestSchema>["me
 }
 
 export async function POST(request: Request) {
+  const deadline = Date.now() + 25_000;
   const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.GEMINI_FALLBACK_API_KEY);
   const groqKey = process.env.GROQ_API_KEY;
   if (!hasGemini && !groqKey) {
@@ -96,6 +97,9 @@ export async function POST(request: Request) {
         systemPrompt: system,
         contents,
         temperature: 0.3,
+        timeoutMs: Math.max(1, Math.min(9_000, deadline - Date.now())),
+        maxTokens: 1800,
+        responseJsonSchema: responseFormat.json_schema.schema,
       });
 
       const advice = validateAdvice(raw, decision, previousNames);
@@ -110,13 +114,18 @@ export async function POST(request: Request) {
   if (groqKey) {
     const models = [process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile", "openai/gpt-oss-20b"];
     for (const model of [...new Set(models)]) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
       try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST", headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...body.messages, ...(body.messages.length ? [] : [{ role: "user", content: "Что мне можно съесть сегодня?" }])], response_format: responseFormat, reasoning_effort: "low", temperature: 0.3, max_completion_tokens: 1400 }),
-          signal: AbortSignal.timeout(12_000),
+          body: JSON.stringify({ model, messages: [{ role: "system", content: `${system}\nJSON schema: ${JSON.stringify(responseFormat.json_schema.schema)}` }, ...body.messages, ...(body.messages.length ? [] : [{ role: "user", content: "Что мне можно съесть сегодня?" }])], response_format: model.startsWith("openai/gpt-oss-") ? responseFormat : { type: "json_object" }, ...(model.startsWith("openai/gpt-oss-") ? { reasoning_effort: "low" } : {}), temperature: 0.3, max_completion_tokens: 1800 }),
+          signal: AbortSignal.timeout(Math.min(7_000, remaining)),
         });
-        if (!response.ok) continue;
+        if (!response.ok) {
+          console.warn("Advice provider failed", { provider: "groq", model, status: response.status });
+          continue;
+        }
         const json = await response.json();
         const content = json?.choices?.[0]?.message?.content;
         if (typeof content !== "string") continue;

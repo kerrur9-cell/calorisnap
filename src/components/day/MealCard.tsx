@@ -69,7 +69,7 @@ export function MealCard({
   });
 
   return (
-    <div className="glass-card rounded-3xl p-4 shadow-xs transition-all duration-300 animate-blur-reveal">
+    <div className="glass-card glossy-sheen scroll-sway rounded-3xl p-4.5 shadow-md transition-all duration-300 animate-blur-reveal">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-lg">{meta.emoji}</span>

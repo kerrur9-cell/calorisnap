@@ -38,7 +38,7 @@ export function MacroBar({
       <div className="h-2.5 overflow-hidden rounded-full bg-muted/60">
         <div
           className={cn(
-            "h-full rounded-full transition-all duration-700 ease-out shadow-xs",
+            "macro-glossy h-full rounded-full transition-all duration-700 ease-out shadow-xs",
             color === "protein" && "bg-gradient-to-r from-protein/80 to-protein",
             color === "fat" && "bg-gradient-to-r from-fat/80 to-fat",
             color === "carbs" && "bg-gradient-to-r from-carbs/80 to-carbs",

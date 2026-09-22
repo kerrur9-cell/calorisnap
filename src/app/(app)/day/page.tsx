@@ -155,13 +155,20 @@ export default function DayPage() {
           {/* Кольцо калорий */}
           <section className="mb-6 flex flex-col items-center">
             <CalorieRing current={day?.totals.calories ?? 0} target={targetCalories} />
-            {isToday && <button onClick={() => setShowAssistant(true)} className="spring-press mt-3 flex items-center gap-2 rounded-full bg-primary-soft/90 border border-primary/20 px-4 py-2 text-sm font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"><Sparkles className="h-4 w-4" /> Спросить, что можно съесть</button>}
+            {isToday && (
+              <button
+                onClick={() => setShowAssistant(true)}
+                className="btn-glossy spring-press mt-3 flex items-center gap-2 rounded-full bg-primary-soft/95 border border-primary/30 px-4.5 py-2 text-sm font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"
+              >
+                <Sparkles className="h-4 w-4" /> Спросить, что можно съесть
+              </button>
+            )}
             {isToday && showAssistant && <FoodAssistantBoundary><FoodAssistant onClose={() => setShowAssistant(false)} /></FoodAssistantBoundary>}
             <Link href="/calculator" className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline"><Calculator className="h-3.5 w-3.5" /> Калькулятор калорий</Link>
           </section>
 
           {/* БЖУ */}
-          <section className="glass-card mb-8 space-y-3 rounded-3xl p-5 shadow-xs animate-blur-reveal stagger-1">
+          <section className="glass-card glossy-sheen scroll-sway-reverse mb-8 space-y-3 rounded-3xl p-5 shadow-md animate-blur-reveal stagger-1">
             <MacroBar
               label="Белки"
               value={day?.totals.proteinG ?? 0}
@@ -305,7 +312,7 @@ function MealGroup({
   const totals = sumTotals(meals.flatMap((meal) => meal.meal_items));
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-card shadow-sm border border-border/40 transition-colors">
+    <div className="glass-card glossy-sheen scroll-sway overflow-hidden rounded-3xl transition-all shadow-md">
       <div
         role="button"
         tabIndex={0}
@@ -335,7 +342,7 @@ function MealGroup({
             <>
               <Link
                 href={{ pathname: "/camera", query: { meal: mealType } }}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-primary spring-press"
                 title="Сфотографировать"
                 aria-label={`Сфотографировать в ${meta.label}`}
               >
@@ -343,7 +350,7 @@ function MealGroup({
               </Link>
               <Link
                 href={{ pathname: "/foods", query: { meal: mealType } }}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-primary spring-press"
                 title="Добавить продукт"
                 aria-label={`Добавить продукт в ${meta.label}`}
               >
@@ -384,21 +391,21 @@ function EmptyMeal({
     return null;
   }
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-dashed border-border bg-card/40 p-4">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <span className="text-lg">{meta.emoji}</span>
-        <span className="font-medium">{meta.label}</span>
+    <div className="glass-card glossy-sheen scroll-sway flex items-center justify-between rounded-3xl border border-dashed border-border/80 bg-card/40 p-4 transition-all shadow-xs">
+      <div className="flex items-center gap-2.5 text-muted-foreground">
+        <span className="text-xl">{meta.emoji}</span>
+        <span className="font-semibold text-foreground/80">{meta.label}</span>
       </div>
       <div className="flex gap-2">
         <Link
           href={{ pathname: "/camera", query: { meal: mealType } }}
-          className="flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-sm text-primary-foreground"
+          className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground shadow-xs"
         >
           <Camera className="h-4 w-4" /> Фото
         </Link>
         <Link
           href={{ pathname: "/foods", query: { meal: mealType } }}
-          className="flex items-center gap-1 rounded-full bg-muted px-3 py-1.5 text-sm"
+          className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-muted/80 border border-border/60 px-3.5 py-1.5 text-sm font-medium hover:bg-muted"
         >
           <Plus className="h-4 w-4" /> Вручную
         </Link>
@@ -417,14 +424,14 @@ function MealAddActions({
     <div className="-mt-1 flex justify-end gap-2 pr-1">
       <Link
         href={{ pathname: "/camera", query: { meal: mealType } }}
-        className="flex items-center gap-1 rounded-full bg-primary-soft px-3 py-1.5 text-sm font-medium text-primary"
+        className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary-soft border border-primary/20 px-3.5 py-1.5 text-sm font-medium text-primary shadow-2xs"
         aria-label={`Добавить фото в ${meta.label}`}
       >
         <Camera className="h-4 w-4" /> Ещё фото
       </Link>
       <Link
         href={{ pathname: "/foods", query: { meal: mealType } }}
-        className="flex items-center gap-1 rounded-full bg-muted px-3 py-1.5 text-sm"
+        className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-muted/80 border border-border/60 px-3.5 py-1.5 text-sm font-medium hover:bg-muted"
         aria-label={`Добавить продукт в ${meta.label}`}
       >
         <Plus className="h-4 w-4" /> Ещё продукт
@@ -446,14 +453,16 @@ function QuickStats({
     <section className="mt-8 space-y-3">
       <Link
         href="/water"
-        className="flex items-center gap-3 rounded-2xl bg-card p-4 shadow-sm transition-colors hover:bg-muted"
+        className="glass-card glossy-sheen scroll-sway-subtle spring-press flex items-center gap-3.5 rounded-3xl p-4.5 shadow-md transition-all hover:border-water/40 group"
       >
-        <Droplets className="h-6 w-6 text-water" />
+        <div className="rounded-2xl p-2.5 bg-water/15 border border-water/30 text-water shadow-2xs">
+          <Droplets className="h-6 w-6 text-water" />
+        </div>
         <div className="flex-1">
-          <div className="font-semibold">Вода</div>
-          <div className="h-1.5 mt-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="font-semibold text-foreground">Вода</div>
+          <div className="h-2 mt-1.5 overflow-hidden rounded-full bg-muted/60">
             <div
-              className="h-full rounded-full bg-water transition-all duration-500"
+              className="macro-glossy h-full rounded-full bg-gradient-to-r from-water/80 to-water transition-all duration-500 shadow-xs"
               style={{ width: `${Math.min(waterPct, 100)}%` }}
             />
           </div>
@@ -462,7 +471,7 @@ function QuickStats({
           {waterMl >= 1000
             ? `${(waterMl / 1000).toFixed(1).replace(".", ",")} л`
             : `${waterMl} мл`}
-          <span className="text-muted-foreground"> / {waterTarget >= 1000 ? `${(waterTarget / 1000).toFixed(1).replace(".", ",")} л` : `${waterTarget} мл`}</span>
+          <span className="text-muted-foreground text-xs"> / {waterTarget >= 1000 ? `${(waterTarget / 1000).toFixed(1).replace(".", ",")} л` : `${waterTarget} мл`}</span>
         </div>
       </Link>
     </section>

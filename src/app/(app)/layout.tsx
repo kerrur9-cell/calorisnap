@@ -1,5 +1,6 @@
 import { TabBar } from "@/components/app/TabBar";
 import { ThemeSync } from "@/components/app/ThemeSync";
+import { ScrollPhysics } from "@/components/app/ScrollPhysics";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Profile } from "@/types/database";
@@ -47,6 +48,7 @@ export default async function AppLayout({
       </div>
 
       <ThemeSync initialProfile={profile as Profile} />
+      <ScrollPhysics />
       {/* Один скролл-контейнер с отступом под таб-бар */}
       <div className="pb-24">
         {children}

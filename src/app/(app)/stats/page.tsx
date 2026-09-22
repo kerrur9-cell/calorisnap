@@ -416,8 +416,8 @@ function BarShape({ x, y, width, height, fill, payload, goal }: BarShapeProps & 
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="mb-4 rounded-2xl bg-card p-4 shadow-sm">
-      <h2 className="mb-3 font-semibold">{title}</h2>
+    <section className="glass-card glossy-sheen scroll-sway mb-4 rounded-3xl p-5 shadow-md transition-all">
+      <h2 className="mb-3 font-semibold text-foreground">{title}</h2>
       {children}
     </section>
   );
@@ -431,7 +431,7 @@ function PeriodToggle({
   onChange: (p: Period) => void;
 }) {
   return (
-    <div className="flex rounded-full bg-muted p-1 text-sm">
+    <div className="flex rounded-full bg-muted/70 p-1 text-sm border border-border/60 shadow-2xs">
       {(
         [
           ["week", "Неделя"],
@@ -441,8 +441,8 @@ function PeriodToggle({
         <button
           key={value}
           onClick={() => onChange(value)}
-          className={`rounded-full px-4 py-1.5 font-medium transition-colors ${
-            period === value ? "bg-card shadow" : "text-muted-foreground"
+          className={`btn-glossy spring-press rounded-full px-4 py-1.5 font-medium transition-all ${
+            period === value ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           {label}

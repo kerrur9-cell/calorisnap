@@ -164,7 +164,6 @@ body::-webkit-scrollbar {
   100% {
     opacity: 1;
     filter: blur(0px);
-    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -251,12 +250,131 @@ body::-webkit-scrollbar {
   transform: scale(0.96) translateZ(0);
 }
 
-/* Матовое стекло Apple Glassmorphism */
-.glass-card {
-  background: color-mix(in srgb, var(--card) 88%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+/* ==========================================================================
+   Глянцевый неоморфизм и стекло (High-Gloss Glassmorphism)
+   ========================================================================== */
+
+/* Премиальное глянцевое стекло Apple Glass */
+.glass-card,
+.glossy-card {
+  position: relative;
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  box-shadow: 
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.4),
+    0 8px 24px -4px rgba(0, 0, 0, 0.08);
+}
+
+.dark .glass-card,
+.dark .glossy-card {
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
+    0 8px 28px -4px rgba(0, 0, 0, 0.45);
+}
+
+/* Глянцевый световой отблеск по верхнему краю карточки */
+.glossy-sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.glossy-sheen::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 48%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+.dark .glossy-sheen::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+/* Глянцевые кнопки с объёмным бликом */
+.btn-glossy {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.45),
+    0 4px 14px 0 rgba(0, 0, 0, 0.1);
+}
+
+.btn-glossy::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 100%);
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  pointer-events: none;
+}
+
+.dark .btn-glossy {
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.25),
+    0 4px 16px 0 rgba(0, 0, 0, 0.4);
+}
+
+.dark .btn-glossy::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+/* Глянцевый блик для полос прогресса (MacroBar) */
+.macro-glossy {
+  position: relative;
+  overflow: hidden;
+}
+
+.macro-glossy::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 42%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 100%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Физика покачивания элементов при скролле (Scroll Sway Physics 60 FPS)
+   ========================================================================== */
+.scroll-sway {
+  --sway-factor: 1;
+  transform: translate3d(0, calc(var(--scroll-shift, 0px) * var(--sway-factor, 1)), 0) 
+             rotate(calc(var(--scroll-tilt, 0deg) * var(--sway-factor, 1)));
+  transition: transform 0.14s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.scroll-sway-reverse {
+  --sway-factor: -0.85;
+  transform: translate3d(0, calc(var(--scroll-shift, 0px) * var(--sway-factor, -0.85)), 0) 
+             rotate(calc(var(--scroll-tilt, 0deg) * var(--sway-factor, -0.85)));
+  transition: transform 0.14s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.scroll-sway-subtle {
+  --sway-factor: 0.55;
+  transform: translate3d(0, calc(var(--scroll-shift, 0px) * var(--sway-factor, 0.55)), 0) 
+             rotate(calc(var(--scroll-tilt, 0deg) * var(--sway-factor, 0.55)));
+  transition: transform 0.14s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 /* Каскадные задержки для поочерёдного выплывания списков */

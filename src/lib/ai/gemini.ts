@@ -36,6 +36,7 @@ async function callGemini(
   body: object,
   apiKey: string,
   model: string,
+  timeoutMs = 22_000,
 ): Promise<{ ok: true; text: string } | { ok: false; status: number; message: string }> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     try {
@@ -49,7 +50,7 @@ async function callGemini(
           },
           body: JSON.stringify(body),
         },
-        22_000,
+        timeoutMs,
       );
 
       if (!res.ok) {
@@ -202,6 +203,8 @@ export interface GeminiJsonOptions<T = unknown> {
   schema?: z.ZodType<T>;
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
+  responseJsonSchema?: object;
 }
 
 const JSON_CANDIDATE_MODELS = [
@@ -240,6 +243,7 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
       responseMimeType: "application/json",
       temperature: options.temperature ?? 0.2,
       maxOutputTokens: options.maxTokens ?? 4096,
+      ...(options.responseJsonSchema ? { responseJsonSchema: options.responseJsonSchema } : {}),
     },
   };
 
@@ -250,11 +254,14 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
   }
 
   let lastError: Error | null = null;
+  const deadline = options.timeoutMs === undefined ? Infinity : Date.now() + options.timeoutMs;
 
   for (const model of JSON_CANDIDATE_MODELS) {
     for (const key of keys) {
       try {
-        const res = await callGemini(body, key, model);
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw lastError ?? new Error("AI request timed out");
+        const res = await callGemini(body, key, model, Math.min(22_000, remaining));
         if (!res.ok) {
           lastError = new Error(res.message);
           continue;
@@ -280,10 +287,10 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
       }
+      if (Date.now() >= deadline) throw lastError ?? new Error("AI request timed out");
     }
   }
 
   throw lastError ?? new Error("Не удалось получить ответ от AI");
 }
-
 

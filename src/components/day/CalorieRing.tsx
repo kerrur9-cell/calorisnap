@@ -33,7 +33,7 @@ export function CalorieRing({
 
   return (
     <div
-      className="relative flex items-center justify-center animate-blur-reveal"
+      className="relative flex items-center justify-center animate-blur-reveal scroll-sway-subtle"
       style={{ width: size, height: size }}
     >
       {/* Мягкое фоновое рассеянное свечение (Atmospheric Ring Glow) */}
@@ -97,12 +97,12 @@ export function CalorieRing({
         </span>
         <span
           className={cn(
-            "mt-1.5 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-wide transition-all duration-500",
+            "mt-1.5 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-wide transition-all duration-500 border shadow-2xs",
             overLimit
-              ? "bg-danger-soft text-danger"
+              ? "bg-danger-soft border-danger/30 text-danger"
               : isNearLimit
-                ? "bg-warning-soft text-warning"
-                : "bg-primary-soft text-primary",
+                ? "bg-warning-soft border-warning/30 text-warning"
+                : "bg-primary-soft border-primary/30 text-primary",
           )}
         >
           {overLimit

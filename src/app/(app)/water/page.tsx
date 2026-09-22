@@ -91,7 +91,7 @@ function WaterFlow() {
       </header>
       {(error || loadError) && <p role="alert" className="mb-4 text-danger">{error || "Не удалось загрузить воду. Обновите страницу."}</p>}
 
-      <div className="mb-6 flex flex-col items-center rounded-3xl bg-card p-8 text-center shadow-sm">
+      <div className="glass-card glossy-sheen scroll-sway mb-6 flex flex-col items-center rounded-3xl p-8 text-center shadow-md">
         <Droplets className="mb-3 h-8 w-8 text-water" />
         <div className="text-5xl font-bold tabular-nums text-water">
           {data?.total ?? 0}
@@ -100,9 +100,9 @@ function WaterFlow() {
         <div className="mt-1 text-sm text-muted-foreground">
           из {target} мл · осталось {goalLeft} мл
         </div>
-        <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-muted">
+        <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-muted/60">
           <div
-            className="h-full rounded-full bg-water transition-all duration-700"
+            className="macro-glossy h-full rounded-full bg-gradient-to-r from-water/80 to-water transition-all duration-700 shadow-xs"
             style={{ width: `${percent}%` }}
           />
         </div>
@@ -115,7 +115,7 @@ function WaterFlow() {
             key={ml}
             onClick={() => addWater(ml)}
             disabled={saving}
-            className="flex flex-col items-center gap-1 rounded-2xl bg-card py-4 shadow-sm transition-transform active:scale-95"
+            className="glass-card glossy-sheen btn-glossy spring-press flex flex-col items-center gap-1 rounded-2xl py-4 shadow-sm border border-border/70"
           >
             <Plus className="h-5 w-5 text-water" />
             <span className="font-semibold tabular-nums">{ml}</span>

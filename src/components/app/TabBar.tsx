@@ -77,7 +77,7 @@ export function TabBar() {
   return (
     <nav
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur-md transform-gpu"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-card/90 backdrop-blur-xl shadow-2xl transform-gpu"
     >
       <div className="mx-auto flex h-16 max-w-md items-stretch justify-between px-2">
         {TABS.slice(0, 2).map((tab) => (
@@ -98,10 +98,10 @@ export function TabBar() {
         >
           <span
             className={cn(
-              "spring-press flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all",
+              "btn-glossy spring-press flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all",
               (pendingHref === "/camera" || pathname === "/camera")
-                ? "bg-primary ring-4 ring-primary/30 shadow-primary/40 scale-105"
-                : "bg-primary shadow-primary/20",
+                ? "bg-primary ring-4 ring-primary/30 shadow-primary/45 scale-105"
+                : "bg-primary shadow-primary/25",
             )}
           >
             <Camera className="h-6 w-6 text-primary-foreground" />

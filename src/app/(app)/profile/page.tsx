@@ -152,8 +152,8 @@ function ProfileFlow() {
       {error && <p role="alert" className="mb-4 text-danger">{error}</p>}
 
       {/* Шапка */}
-      <div className="mb-6 flex items-center gap-4 rounded-2xl bg-card p-5 shadow-sm">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-soft text-2xl font-bold text-primary">
+      <div className="glass-card glossy-sheen scroll-sway mb-6 flex items-center gap-4 rounded-3xl p-5 shadow-md">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-soft text-2xl font-bold text-primary shadow-xs border border-primary/20">
           {(profile.display_name ?? "Г").charAt(0).toUpperCase()}
         </div>
         <div>
@@ -165,7 +165,7 @@ function ProfileFlow() {
             {profile.current_weight_kg ?? "—"} кг
           </div>
           {profile.goal && (
-            <span className="mt-1 inline-block rounded-full bg-primary-soft px-3 py-0.5 text-xs text-primary">
+            <span className="mt-1 inline-block rounded-full bg-primary-soft border border-primary/30 px-3 py-0.5 text-xs font-medium text-primary shadow-2xs">
               {GOAL_LABELS[profile.goal]}
             </span>
           )}
@@ -173,8 +173,8 @@ function ProfileFlow() {
       </div>
 
       {/* Нормы */}
-      <section className="mb-4 rounded-2xl bg-card p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold">Ваши нормы</h2>
+      <section className="glass-card glossy-sheen scroll-sway-reverse mb-4 rounded-3xl p-5 shadow-md">
+        <h2 className="mb-3 font-semibold text-foreground">Ваши нормы</h2>
         <div className="space-y-2 text-sm">
           <Row label="Цель по калориям" value={`${profile.daily_calorie_target ?? "—"} ккал`} />
           <Row label="TDEE" value={tdee ? `${tdee} ккал` : "—"} />
@@ -184,15 +184,15 @@ function ProfileFlow() {
         </div>
         <Link
           href="/onboarding"
-          className="mt-4 block rounded-xl bg-primary-soft py-2.5 text-center text-sm font-medium text-primary"
+          className="btn-glossy spring-press mt-4 block rounded-2xl bg-primary-soft border border-primary/20 py-2.5 text-center text-sm font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"
         >
           Изменить данные и пересчитать нормы
         </Link>
       </section>
 
       {/* Новый вес */}
-      <section className="mb-4 rounded-2xl bg-card p-5 shadow-sm">
-        <h2 className="mb-3 flex items-center gap-2 font-semibold">
+      <section className="glass-card glossy-sheen scroll-sway mb-4 rounded-3xl p-5 shadow-md">
+        <h2 className="mb-3 flex items-center gap-2 font-semibold text-foreground">
           <Scale className="h-4 w-4 text-primary" /> Вес тела
         </h2>
         <div className="flex gap-2">
@@ -202,13 +202,13 @@ function ProfileFlow() {
             placeholder="Например, 79.5"
             value={weightInput}
             onChange={(e) => setWeightInput(e.target.value)}
-            className="flex-1 rounded-xl border border-border bg-background px-3 py-2.5 tabular-nums outline-none focus:border-primary"
+            className="flex-1 rounded-2xl border border-border bg-background/80 px-3.5 py-2.5 tabular-nums outline-none focus:border-primary shadow-2xs"
           />
-          <span className="flex items-center text-sm text-muted-foreground">кг</span>
+          <span className="flex items-center text-sm text-muted-foreground font-medium">кг</span>
           <button
             onClick={addWeight}
             disabled={savingWeight}
-            className="rounded-xl bg-primary px-4 text-primary-foreground"
+            className="btn-glossy spring-press rounded-2xl bg-primary px-4 text-primary-foreground shadow-xs"
           >
             {weightSaved ? (
               <Check className="h-5 w-5 text-primary-foreground" />

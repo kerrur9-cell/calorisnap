@@ -36,6 +36,7 @@ export function FoodAssistant({ onClose }: { onClose: () => void }) {
     try {
       const response = await fetch("/api/ai/advice", {
         method: "POST", headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(30_000),
         body: JSON.stringify({ date: todayKey(), messages: history.slice(-12).map(({ role, ...message }) => ({ role, content: historyText({ role, ...message }) })) }),
       });
       const raw = await response.text();
@@ -49,7 +50,7 @@ export function FoodAssistant({ onClose }: { onClose: () => void }) {
       if (!json.advice) throw new Error("Ассистент не прислал ответ. Нажмите «Повторить».");
       const advice = json.advice;
       setMessages([...history, { role: "assistant", content: advice.message, advice }]);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось получить совет"); }
+    } catch (cause) { setError(cause instanceof Error && cause.name === "TimeoutError" ? "Ответ задерживается. Попробуйте ещё раз." : cause instanceof Error ? cause.message : "Не удалось получить совет"); }
     finally { setLoading(false); }
   }
 
