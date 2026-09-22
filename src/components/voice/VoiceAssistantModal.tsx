@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, X, Loader2, Sparkles, Check, ArrowRight, Volume2 } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Sparkles, Check, ArrowRight, Volume2, Radio } from "lucide-react";
 import { classifyVoiceIntent, answerVoiceQuery, type VoiceQueryResult } from "@/lib/voice/intent";
 import type { DayTotals, MacroTargets } from "@/lib/nutrition/macros";
 import type { MealType } from "@/types/database";
@@ -41,6 +41,7 @@ export function VoiceAssistantModal({
 }: VoiceAssistantModalProps) {
   const queryClient = useQueryClient();
   const [isListening, setIsListening] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [transcript, setTranscript] = useState("");
   const [infoAnswer, setInfoAnswer] = useState<VoiceQueryResult | null>(null);
   const [parsedItems, setParsedItems] = useState<ParsedFoodItem[] | null>(null);
@@ -51,16 +52,41 @@ export function VoiceAssistantModal({
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const handleClose = () => {
+  const cleanupAudio = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
       } catch {
         // ignore
       }
+      recognitionRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
     setIsListening(false);
+    setRecordingSeconds(0);
+  };
+
+  const handleClose = () => {
+    cleanupAudio();
     setTranscript("");
     setInfoAnswer(null);
     setParsedItems(null);
@@ -68,87 +94,150 @@ export function VoiceAssistantModal({
     onClose();
   };
 
-  const isSpeechSupported =
-    typeof window !== "undefined" &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
-
+  // Очистка при размонтировании или закрытии
   useEffect(() => {
-    if (!isOpen) return;
-
-    // Инициализация Web Speech API
-    const SpeechRecognition =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) return;
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "ru-RU";
-    recognition.continuous = false;
-    recognition.interimResults = true;
-
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (event: any) => {
-      const current = Array.from(event.results)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((r: any) => r[0].transcript)
-        .join("");
-      setTranscript(current);
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onerror = (event: any) => {
-      if (event.error !== "no-speech") {
-        setError(`Ошибка микрофона: ${event.error}`);
-      }
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognitionRef.current = recognition;
-
-    // Автоматический старт при открытии
-    try {
-      recognition.start();
-    } catch {
-      // Игнорируем если уже запущен
+    if (!isOpen) {
+      cleanupAudio();
     }
-
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {
-          // ignore
-        }
-      }
+      cleanupAudio();
     };
   }, [isOpen]);
 
-  function toggleListening() {
-    if (!recognitionRef.current) return;
+  // Таймер длительности записи
+  useEffect(() => {
     if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+      timerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => {
+          if (prev >= 20) {
+            // Авто-остановка через 20 секунд
+            stopListening();
+            return 20;
+          }
+          return prev + 1;
+        });
+      }, 1000);
     } else {
-      setError(null);
-      setInfoAnswer(null);
-      setParsedItems(null);
-      setTranscript("");
-      try {
-        recognitionRef.current.start();
-        setIsListening(true);
-      } catch {
-        // Игнорируем
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
       }
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isListening]);
+
+  // Запуск записи звука
+  async function startListening() {
+    setError(null);
+    setInfoAnswer(null);
+    setParsedItems(null);
+    audioChunksRef.current = [];
+    setRecordingSeconds(0);
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Ваш браузер не поддерживает запись аудио");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      // Определение поддерживаемого MIME-типа
+      let mimeType = "audio/webm";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        }
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType: mimeType.split(";")[0] ? mimeType : undefined });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        if (audioBlob.size > 200) {
+          await processRecordedAudio(audioBlob);
+        } else {
+          setIsProcessing(false);
+        }
+      };
+
+      recorder.start(250); // собираем чанки каждые 250мс
+      setIsListening(true);
+
+      // Дополнительно запускаем Web Speech API для живого предпросмотра текста, если поддерживается
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        try {
+          const recognition = new SpeechRecognition();
+          recognition.lang = "ru-RU";
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          recognition.onresult = (e: any) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const text = Array.from(e.results).map((r: any) => r[0].transcript).join("");
+            if (text) setTranscript(text);
+          };
+          recognition.onerror = () => {
+            // Игнорируем сетевые ошибки Google Speech — MediaRecorder сделает надежную запись
+          };
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch {
+          // Игнорируем
+        }
+      }
+    } catch (err) {
+      setIsListening(false);
+      setError(
+        err instanceof Error && err.name === "NotAllowedError"
+          ? "Доступ к микрофону заблокирован. Разрешите микрофон в настройках браузера."
+          : "Не удалось получить доступ к микрофону. Введите запрос текстом."
+      );
+    }
+  }
+
+  // Остановка записи
+  function stopListening() {
+    setIsListening(false);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      setIsProcessing(true);
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  }
+
+  function toggleListening() {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
     }
   }
 
@@ -163,11 +252,91 @@ export function VoiceAssistantModal({
     }
   }
 
-  // Обработка фразы
+  // Обработка записанного аудиофайла
+  async function processRecordedAudio(blob: Blob) {
+    setIsProcessing(true);
+    setError(null);
+
+    // Если Web Speech уже распознал текстовый вопрос о дневнике, отвечаем сразу локально
+    if (transcript.trim()) {
+      const intent = classifyVoiceIntent(transcript);
+      if (intent !== "LOG_FOOD" && intent !== "UNKNOWN") {
+        const answer = answerVoiceQuery({
+          intent,
+          consumed: consumedTotals,
+          targetCalories,
+          targetMacros: macroTargets,
+          eatenFoodNames,
+        });
+        setInfoAnswer(answer);
+        speakText(answer.answerText);
+        setIsProcessing(false);
+        return;
+      }
+    }
+
+    try {
+      // Конвертируем Blob в Base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const res = reader.result as string;
+          const commaIdx = res.indexOf(",");
+          resolve(commaIdx >= 0 ? res.slice(commaIdx + 1) : res);
+        };
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(blob);
+      const audioBase64 = await base64Promise;
+
+      const res = await fetch("/api/ai/voice-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioBase64,
+          mimeType: blob.type || "audio/webm",
+          transcript: transcript.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Не удалось распознать голос");
+
+      if (data.transcript) {
+        setTranscript(data.transcript);
+
+        // Проверяем, не был ли это вопрос
+        const recognizedIntent = classifyVoiceIntent(data.transcript);
+        if (recognizedIntent !== "LOG_FOOD" && recognizedIntent !== "UNKNOWN") {
+          const answer = answerVoiceQuery({
+            intent: recognizedIntent,
+            consumed: consumedTotals,
+            targetCalories,
+            targetMacros: macroTargets,
+            eatenFoodNames,
+          });
+          setInfoAnswer(answer);
+          speakText(answer.answerText);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      setParsedItems(data.items ?? []);
+      if (data.suggestedMealType) {
+        setSelectedMealType(data.suggestedMealType);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось распознать запись");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  // Обработка текстовой фразы (ручной ввод)
   async function handleProcessPhrase(text: string) {
     if (!text.trim()) return;
-    if (recognitionRef.current) recognitionRef.current.stop();
-    setIsListening(false);
+    cleanupAudio();
     setIsProcessing(true);
     setError(null);
     setInfoAnswer(null);
@@ -191,7 +360,6 @@ export function VoiceAssistantModal({
       return;
     }
 
-    // Если это логгирование еды ("я съел...")
     try {
       const res = await fetch("/api/ai/voice-parse", {
         method: "POST",
@@ -265,7 +433,7 @@ export function VoiceAssistantModal({
             </span>
             <div>
               <h2 className="text-base font-bold">Голосовой ассистент</h2>
-              <p className="text-xs text-muted-foreground">Спросите баланс или назовите блюда</p>
+              <p className="text-xs text-muted-foreground">Скажите в микрофон или введите текст</p>
             </div>
           </div>
           <button onClick={handleClose} aria-label="Закрыть" className="rounded-full p-2 hover:bg-muted">
@@ -277,21 +445,47 @@ export function VoiceAssistantModal({
         <div className="flex flex-col items-center justify-center py-4">
           <div className="relative flex items-center justify-center">
             {isListening && (
-              <span className="absolute h-20 w-20 animate-ping rounded-full bg-primary/20" />
+              <>
+                <span className="absolute h-24 w-24 animate-ping rounded-full bg-red-500/20" />
+                <span className="absolute h-20 w-20 animate-pulse rounded-full bg-primary/30" />
+              </>
             )}
             <button
               onClick={toggleListening}
+              disabled={isProcessing}
               className={`relative z-10 flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95 ${
-                isListening ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
+                isListening
+                  ? "bg-red-500 text-white shadow-red-500/40"
+                  : "bg-primary text-primary-foreground hover:opacity-90"
+              } disabled:opacity-50`}
               aria-label={isListening ? "Остановить запись" : "Начать запись"}
             >
-              {isListening ? <Mic className="h-7 w-7 animate-pulse" /> : <MicOff className="h-7 w-7" />}
+              {isProcessing ? (
+                <Loader2 className="h-7 w-7 animate-spin" />
+              ) : isListening ? (
+                <Mic className="h-7 w-7 animate-pulse" />
+              ) : (
+                <Mic className="h-7 w-7" />
+              )}
             </button>
           </div>
-          <p className="mt-3 text-xs font-medium text-muted-foreground">
-            {isListening ? "Слушаю вас..." : "Нажмите на микрофон для записи"}
-          </p>
+          <div className="mt-3 flex items-center gap-2 text-xs font-semibold">
+            {isListening ? (
+              <span className="flex items-center gap-1.5 text-red-500">
+                <Radio className="h-3.5 w-3.5 animate-pulse" />
+                Идёт запись... 0:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds} (нажмите, чтобы завершить)
+              </span>
+            ) : isProcessing ? (
+              <span className="flex items-center gap-1.5 text-primary">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                AI распознаёт голос и считает калории...
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                Нажмите на микрофон и назовите блюда
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Поле текста / транскрипта */}
@@ -320,12 +514,11 @@ export function VoiceAssistantModal({
           )}
         </div>
 
-        {!isSpeechSupported && (
-          <div className="rounded-xl bg-amber-500/10 p-2.5 text-xs text-amber-600">
-            Голосовой ввод не поддерживается браузером. Вы можете ввести запрос текстом ниже.
+        {error && (
+          <div className="rounded-xl bg-danger/10 p-2.5 text-xs text-danger font-medium">
+            {error}
           </div>
         )}
-        {error && <div className="text-xs text-danger">{error}</div>}
 
         {/* Ответ на информационный запрос */}
         {infoAnswer && (
@@ -359,7 +552,7 @@ export function VoiceAssistantModal({
 
         {/* Распознанные позиции еды */}
         {parsedItems && parsedItems.length > 0 && (
-          <div className="space-y-3 rounded-2xl border border-border/60 bg-card p-4">
+          <div className="space-y-3 rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-muted-foreground uppercase">Распознано:</span>
               <span className="text-xs font-bold text-primary">{Math.round(totalParsedCalories)} ккал</span>

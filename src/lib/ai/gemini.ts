@@ -189,7 +189,16 @@ export async function analyzeFoodPhoto(
 export interface GeminiJsonOptions<T = unknown> {
   systemPrompt?: string;
   prompt?: string;
-  contents?: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>;
+  contents?: Array<{
+    role: "user" | "model";
+    parts: Array<{
+      text?: string;
+      inlineData?: {
+        mimeType: string;
+        data: string;
+      };
+    }>;
+  }>;
   schema?: z.ZodType<T>;
   temperature?: number;
   maxTokens?: number;

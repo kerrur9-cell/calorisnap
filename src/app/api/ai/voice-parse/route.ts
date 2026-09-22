@@ -7,8 +7,12 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const requestSchema = z.object({
-  transcript: z.string().trim().min(2).max(500),
+  transcript: z.string().trim().max(500).optional(),
+  audioBase64: z.string().min(20).optional(),
+  mimeType: z.string().default("audio/webm"),
   defaultMealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).optional(),
+}).refine((data) => Boolean(data.transcript || data.audioBase64), {
+  message: "Требуется текст фразы или аудиозапись",
 });
 
 const itemSchema = z.object({
@@ -21,12 +25,13 @@ const itemSchema = z.object({
 });
 
 const voiceResponseSchema = z.object({
+  transcript: z.string().default(""),
   suggestedMealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).optional(),
   items: z.array(itemSchema).default([]),
 });
 
 const SYSTEM_PROMPT = `Ты — профессиональный пищевой парсер CaloriSnap.
-Твоя задача — преобразовать голосовую фразу пользователя на русском языке в структурированный список продуктов с реалистичными граммовками и КБЖУ.
+Твоя задача — преобразовать голосовую запись или фразу пользователя на русском языке в структурированный список продуктов с реалистичными граммовками и КБЖУ.
 Стандартные ориентиры порций в России:
 - 1 яйцо = 55 г (75 ккал, Б 6.5, Ж 5.5, У 0.5)
 - 1 кусок хлеба = 30-35 г (80 ккал, Б 2.5, Ж 0.8, У 15)
@@ -36,6 +41,7 @@ const SYSTEM_PROMPT = `Ты — профессиональный пищевой 
 - 1 порция мяса / филе = 120-180 г
 Верни ТОЛЬКО валидный JSON:
 {
+  "transcript": "Расшифрованный текст того, что сказал пользователь",
   "suggestedMealType": "breakfast" | "lunch" | "dinner" | "snack",
   "items": [
     {
@@ -64,42 +70,66 @@ export async function POST(request: NextRequest) {
   }
 
   const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.GEMINI_FALLBACK_API_KEY);
-  const userPrompt = `Пользователь сказал: "${body.transcript}". Предпочтительный приём пищи: ${body.defaultMealType ?? "auto"}. Распознай продукты и граммовки.`;
 
   if (hasGemini) {
     try {
+      let contents;
+      if (body.audioBase64) {
+        // Очищаем mime-type от параметров вроде codecs=opus
+        const cleanMime = body.mimeType.split(";")[0].trim();
+        contents = [
+          {
+            role: "user" as const,
+            parts: [
+              {
+                inlineData: {
+                  mimeType: cleanMime,
+                  data: body.audioBase64,
+                },
+              },
+              {
+                text: `Пользователь надиктовал голосом продукты для дневника питания CaloriSnap.
+1. Расшифруй услышанную речь на русском языке в поле "transcript".
+2. Извлеки продукты с реалистичными граммовками и точным КБЖУ в "items".
+3. Предпочтительный приём пищи: ${body.defaultMealType ?? "auto"}.
+Верни строгий JSON.`,
+              },
+            ],
+          },
+        ];
+      } else {
+        contents = [
+          {
+            role: "user" as const,
+            parts: [
+              {
+                text: `Пользователь сказал: "${body.transcript}". Предпочтительный приём пищи: ${body.defaultMealType ?? "auto"}. Распознай продукты и граммовки. В поле "transcript" верни "${body.transcript}".`,
+              },
+            ],
+          },
+        ];
+      }
+
       const parsed = await generateGeminiJson({
         systemPrompt: SYSTEM_PROMPT,
-        prompt: userPrompt,
+        contents,
         schema: voiceResponseSchema,
         temperature: 0.1,
       });
 
-      const items = parsed.items.length > 0
-        ? parsed.items
-        : [
-            {
-              name: body.transcript.slice(0, 50),
-              weight_grams: 100,
-              calories: 150,
-              protein_g: 5,
-              fat_g: 5,
-              carbs_g: 20,
-            },
-          ];
-
       return NextResponse.json({
+        transcript: parsed.transcript || body.transcript || "",
         suggestedMealType: parsed.suggestedMealType ?? body.defaultMealType ?? "snack",
-        items,
+        items: parsed.items,
       });
     } catch (err) {
       console.error("Gemini voice parse error:", err);
     }
   }
 
-  // Резервный Groq, если настроен ключ
+  // Резервный Groq (только если передан текст)
   const groqKey = process.env.GROQ_API_KEY;
-  if (groqKey) {
+  if (groqKey && body.transcript) {
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -111,7 +141,7 @@ export async function POST(request: NextRequest) {
           model: process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile",
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
+            { role: "user", content: `Пользователь сказал: "${body.transcript}"` },
           ],
           response_format: { type: "json_object" },
           temperature: 0.1,
@@ -126,6 +156,7 @@ export async function POST(request: NextRequest) {
         if (content) {
           const parsed = voiceResponseSchema.parse(JSON.parse(content));
           return NextResponse.json({
+            transcript: body.transcript,
             suggestedMealType: parsed.suggestedMealType ?? body.defaultMealType ?? "snack",
             items: parsed.items,
           });
@@ -137,8 +168,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { error: "Не удалось точно распознать состав блюда. Попробуйте сказать ещё раз или добавьте через поиск." },
+    { error: "Не удалось точно распознать голос. Попробуйте сказать ещё раз или добавьте через поиск." },
     { status: 502 }
   );
 }
-
