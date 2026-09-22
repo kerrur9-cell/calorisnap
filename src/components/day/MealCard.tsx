@@ -3,12 +3,14 @@
 import type { MealWithItems } from "@/types/database";
 import { mealTypeMeta } from "@/hooks/useDayLog";
 import { sumTotals } from "@/lib/nutrition/macros";
-import { ImageIcon, Trash2 } from "lucide-react";
+import { ImageIcon, Trash2, ArrowLeftRight } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { dayQueryKey } from "@/hooks/useDayLog";
 import Image from "next/image";
+import { FoodSwapModal } from "./FoodSwapModal";
+import type { FoodSwapItem } from "@/lib/nutrition/swap";
 
 /**
  * Карточка приёма пищи: emoji + список продуктов + сумма по БЖУ.
@@ -27,6 +29,7 @@ export function MealCard({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [swappingItem, setSwappingItem] = useState<FoodSwapItem | null>(null);
 
   async function showPhoto() {
     if (!meal.photo_storage_path) return;
@@ -95,16 +98,35 @@ export function MealCard({
           return (
             <li
               key={item.id}
-              className="flex flex-wrap items-baseline justify-between gap-2 text-sm"
+              className="flex flex-wrap items-center justify-between gap-2 text-sm"
             >
-              <span className="text-foreground">
-                {name}
-                {item.weight_grams != null && (
-                  <span className="ml-1 text-xs text-muted-foreground">
-                    · {Math.round(item.weight_grams)} г
-                  </span>
-                )}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <button
+                  onClick={() =>
+                    setSwappingItem({
+                      name,
+                      weightGrams: item.weight_grams ?? 100,
+                      calories: item.calories,
+                      proteinG: item.protein_g,
+                      fatG: item.fat_g,
+                      carbsG: item.carbs_g,
+                    })
+                  }
+                  title="Подобрать замену (Food Swap)"
+                  aria-label={`Подобрать замену для ${name}`}
+                  className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-primary-soft hover:text-primary"
+                >
+                  <ArrowLeftRight className="h-3.5 w-3.5" />
+                </button>
+                <span className="text-foreground truncate">
+                  {name}
+                  {item.weight_grams != null && (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      · {Math.round(item.weight_grams)} г
+                    </span>
+                  )}
+                </span>
+              </div>
               <span className="flex shrink-0 items-center gap-3 tabular-nums">
                 <span className="text-xs text-muted-foreground">
                   Б {item.protein_g} · Ж {item.fat_g} · У {item.carbs_g}
@@ -124,6 +146,14 @@ export function MealCard({
           {Math.round(totals.calories)} ккал
         </span>
       </div>
+
+      {swappingItem && (
+        <FoodSwapModal
+          item={swappingItem}
+          isOpen={Boolean(swappingItem)}
+          onClose={() => setSwappingItem(null)}
+        />
+      )}
     </div>
   );
 }

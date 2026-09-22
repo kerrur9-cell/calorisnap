@@ -16,6 +16,8 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
 import { addDays, todayKey } from "@/lib/utils";
+import { WeightForecastChart } from "@/components/charts/WeightForecastChart";
+import { calculateTdee } from "@/lib/nutrition/tdee";
 
 export default function StatsPage() {
   return (
@@ -120,6 +122,37 @@ function StatsFlow() {
     const last = weightData[weightData.length - 1].weight;
     return Math.round((last - first) * 100) / 100;
   }, [weightData]);
+
+  const userTdee = useMemo(() => {
+    if (
+      profile?.gender &&
+      profile?.birth_date &&
+      profile?.height_cm &&
+      profile?.current_weight_kg &&
+      profile?.activity_level &&
+      profile?.goal
+    ) {
+      try {
+        const [y, m, d] = profile.birth_date.split("-").map(Number);
+        const birth = new Date(y, m - 1, d);
+        const now = new Date();
+        let age = now.getFullYear() - birth.getFullYear();
+        if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) age--;
+        const res = calculateTdee({
+          gender: profile.gender,
+          age,
+          heightCm: profile.height_cm,
+          weightKg: profile.current_weight_kg,
+          activityLevel: profile.activity_level,
+          goal: profile.goal,
+        });
+        return res.tdee;
+      } catch {
+        return (profile.daily_calorie_target ?? 2000) + 400;
+      }
+    }
+    return (profile?.daily_calorie_target ?? 2000) + 400;
+  }, [profile]);
 
   if (error) return <main className="p-6" role="alert">Не удалось загрузить статистику. Проверьте подключение и обновите страницу.</main>;
   if (isLoading) return <main className="p-6">Загружаем статистику…</main>;
@@ -240,6 +273,23 @@ function StatsFlow() {
           </ResponsiveContainer>
         </ChartCard>
       )}
+
+      {/* Прогноз веса */}
+      <div className="mt-6">
+        <WeightForecastChart
+          weightHistory={(calories?.weights ?? []).map((w) => ({
+            date: w.recorded_at!,
+            weightKg: Number(w.weight_kg),
+          }))}
+          calorieHistory={(calories?.stats ?? []).map((s) => ({
+            date: s.entry_date!,
+            calories: Number(s.total_calories ?? 0),
+          }))}
+          tdee={userTdee}
+          targetCalories={goal}
+          targetWeightKg={profile?.target_weight_kg}
+        />
+      </div>
     </main>
   );
 }

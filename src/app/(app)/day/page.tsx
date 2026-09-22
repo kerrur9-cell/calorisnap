@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Camera, Droplets, Sparkles, Calculator, ChevronDown, Scale } from "lucide-react";
 import { useDayLog, mealTypeMeta, MEAL_TYPES } from "@/hooks/useDayLog";
 import { useProfile } from "@/hooks/useProfile";
 import { CalorieRing } from "@/components/day/CalorieRing";
@@ -12,6 +12,9 @@ import { todayKey, addDays } from "@/lib/utils";
 import { FoodAssistant, FoodAssistantBoundary } from "@/components/day/FoodAssistant";
 import { sumTotals } from "@/lib/nutrition/macros";
 import type { MealType, MealWithItems } from "@/types/database";
+import { useSmartAlerts } from "@/hooks/useSmartAlerts";
+import { SmartAlertBanner } from "@/components/day/SmartAlertBanner";
+import { MacroBalancer } from "@/components/day/MacroBalancer";
 
 /**
  * Главный экран: день пользователя.
@@ -20,6 +23,7 @@ import type { MealType, MealWithItems } from "@/types/database";
 export default function DayPage() {
   const [dateKey, setDateKey] = useState(todayKey());
   const [showAssistant, setShowAssistant] = useState(false);
+  const [showBalancer, setShowBalancer] = useState(false);
   const isToday = dateKey === todayKey();
 
   const { data: day, isLoading, error } = useDayLog(dateKey);
@@ -31,6 +35,14 @@ export default function DayPage() {
     fat: profile?.daily_fat_g ?? 70,
     carbs: profile?.daily_carbs_g ?? 200,
   };
+
+  const { activeAlert, dismissAlert } = useSmartAlerts({
+    targetCalories,
+    consumedCalories: day?.totals.calories ?? 0,
+    targetProtein: macroTargets.protein,
+    consumedProtein: day?.totals.proteinG ?? 0,
+    isToday,
+  });
 
   return (
     <main className="min-h-dvh bg-background px-4 pt-8">
@@ -64,6 +76,13 @@ export default function DayPage() {
           <ChevronRight className="h-5 w-5" />
         </button>
       </header>
+
+      {/* Умные контекстные предупреждения */}
+      <SmartAlertBanner
+        alert={activeAlert}
+        onDismiss={dismissAlert}
+        onAction={() => setShowBalancer(true)}
+      />
 
       {isLoading ? (
         <SkeletonDay />
@@ -101,6 +120,16 @@ export default function DayPage() {
               target={macroTargets.carbs}
               color="carbs"
             />
+            {isToday && (
+              <div className="flex justify-end border-t border-border/40 pt-2.5">
+                <button
+                  onClick={() => setShowBalancer(true)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline transition-all"
+                >
+                  <Scale className="h-3.5 w-3.5" /> Сбалансировать БЖУ
+                </button>
+              </div>
+            )}
           </section>
 
           {/* Приёмы пищи */}
@@ -126,6 +155,25 @@ export default function DayPage() {
           <QuickStats
             waterMl={day?.waterMl ?? 0}
             waterTarget={profile?.daily_water_ml ?? 2000}
+          />
+
+          {/* Модальное окно Macro Balancer */}
+          <MacroBalancer
+            targetCalories={targetCalories}
+            remainingCalories={Math.max(0, Math.round(targetCalories - (day?.totals.calories ?? 0)))}
+            targetMacros={{
+              proteinG: macroTargets.protein,
+              fatG: macroTargets.fat,
+              carbsG: macroTargets.carbs,
+            }}
+            remainingMacros={{
+              proteinG: Math.max(0, Math.round(macroTargets.protein - (day?.totals.proteinG ?? 0))),
+              fatG: Math.max(0, Math.round(macroTargets.fat - (day?.totals.fatG ?? 0))),
+              carbsG: Math.max(0, Math.round(macroTargets.carbs - (day?.totals.carbsG ?? 0))),
+            }}
+            dateKey={dateKey}
+            isOpen={showBalancer}
+            onClose={() => setShowBalancer(false)}
           />
         </>
       )}
