@@ -38,9 +38,16 @@ export function FoodAssistant({ onClose }: { onClose: () => void }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: todayKey(), messages: history.slice(-12).map(({ role, ...message }) => ({ role, content: historyText({ role, ...message }) })) }),
       });
-      const json = await response.json();
+      const raw = await response.text();
+      let json: { advice?: AdviceResponse; error?: string };
+      try {
+        json = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error("Ассистент временно недоступен. Нажмите «Повторить».");
+      }
       if (!response.ok) throw new Error(json.error ?? "Не удалось получить совет");
-      const advice = json.advice as AdviceResponse;
+      if (!json.advice) throw new Error("Ассистент не прислал ответ. Нажмите «Повторить».");
+      const advice = json.advice;
       setMessages([...history, { role: "assistant", content: advice.message, advice }]);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось получить совет"); }
     finally { setLoading(false); }

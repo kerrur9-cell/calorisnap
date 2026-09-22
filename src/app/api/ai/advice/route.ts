@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...body.messages, ...(body.messages.length ? [] : [{ role: "user", content: "Что мне можно съесть сегодня?" }])], response_format: responseFormat, reasoning_effort: "low", temperature: 0.3, max_completion_tokens: 1400 }),
-        signal: AbortSignal.timeout(11_000),
+        signal: AbortSignal.timeout(20_000),
       });
       if (!response.ok) continue;
       const json = await response.json();
