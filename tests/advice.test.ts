@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideAdvice, validateAdvice } from "../src/lib/nutrition/advice";
+import { decideAdvice, detectAdvicePreference, validateAdvice } from "../src/lib/nutrition/advice";
 
 const targets = { proteinG: 120, fatG: 70, carbsG: 200 };
 const consumed = (calories: number) => ({ calories, proteinG: 40, fatG: 20, carbsG: 70 });
@@ -28,5 +28,19 @@ describe("deterministic advice decision", () => {
     const result = validateAdvice({ ...valid, recommendations: [...valid.recommendations, { ...valid.recommendations[0], portion: "200 г" }] }, decideAdvice(1800, targets, consumed(1200)));
     expect(result?.recommendations).toHaveLength(1);
   });
+  it("does not repeat an earlier recommendation", () => {
+    const result = validateAdvice(valid, decideAdvice(1800, targets, consumed(1200)), ["Творог"]);
+    expect(result?.recommendations).toEqual([]);
+  });
   it("rejects malformed model output", () => expect(validateAdvice({ nope: true }, decideAdvice(1800, targets, consumed(1200)))).toBeNull());
+});
+
+describe("detectAdvicePreference", () => {
+  it("recognizes a request for food with no cooking", () => {
+    expect(detectAdvicePreference("вообще без готовки хочу")).toBe("ready_to_eat");
+    expect(detectAdvicePreference("ничего готовить не хочу")).toBe("ready_to_eat");
+  });
+  it("recognizes low-effort food separately", () => {
+    expect(detectAdvicePreference("хочу ленивый быстрый ужин")).toBe("low_effort");
+  });
 });

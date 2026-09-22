@@ -9,6 +9,16 @@ export type AdviceDecision = {
   macrosRemaining: MacroTargets;
 };
 
+export type AdvicePreference = "ready_to_eat" | "low_effort" | "standard";
+
+/** Turns common short requests into an unambiguous instruction for the model. */
+export function detectAdvicePreference(message: string): AdvicePreference {
+  const text = message.toLocaleLowerCase("ru-RU");
+  if (/(без\s+готовк|не\s*хоч[уюе].{0,18}готов|готов.{0,18}не\s*хоч|нич[её]го?\s+готов|ленив.{0,24}без)/u.test(text)) return "ready_to_eat";
+  if (/(ленив|быстр|минимум\s+готовк|прост.{0,18}приготов)/u.test(text)) return "low_effort";
+  return "standard";
+}
+
 export function decideAdvice(
   targetCalories: number,
   macroTargets: MacroTargets,
@@ -47,7 +57,7 @@ export const adviceResponseSchema = z.object({
 export type AdviceResponse = z.infer<typeof adviceResponseSchema>;
 
 /** Model output is never allowed to override calorie rules or show invalid food. */
-export function validateAdvice(raw: unknown, decision: AdviceDecision): AdviceResponse | null {
+export function validateAdvice(raw: unknown, decision: AdviceDecision, excludedNames: string[] = []): AdviceResponse | null {
   const parsed = adviceResponseSchema.safeParse(raw);
   if (!parsed.success) return null;
   const response = parsed.data;
@@ -55,9 +65,10 @@ export function validateAdvice(raw: unknown, decision: AdviceDecision): AdviceRe
     return { ...response, mode: decision.mode, recommendations: [] };
   }
   const names = new Set<string>();
+  const excluded = new Set(excludedNames.map((name) => name.toLocaleLowerCase("ru-RU").trim()));
   const recommendations = response.recommendations.filter((item) => {
     const name = item.name.toLocaleLowerCase("ru-RU").trim();
-    if (names.has(name) || item.calories > decision.caloriesRemaining) return false;
+    if (names.has(name) || excluded.has(name) || item.calories > decision.caloriesRemaining) return false;
     names.add(name);
     return true;
   });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { sumTotals, type NutritionRow } from "@/lib/nutrition/macros";
-import { decideAdvice, validateAdvice } from "@/lib/nutrition/advice";
+import { decideAdvice, detectAdvicePreference, validateAdvice } from "@/lib/nutrition/advice";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -34,6 +34,14 @@ const responseFormat = {
   },
 };
 
+function previousRecommendationNames(messages: z.infer<typeof requestSchema>["messages"]) {
+  return messages
+    .filter((message) => message.role === "assistant")
+    .flatMap((message) => message.content.match(/РЕКОМЕНДОВАНО:\s*([^\n]+)/gu)?.[1].split("|") ?? [])
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
 export async function POST(request: Request) {
   const key = process.env.GROQ_API_KEY;
   if (!key) return NextResponse.json({ error: "Ассистент пока не настроен" }, { status: 503 });
@@ -59,8 +67,15 @@ export async function POST(request: Request) {
     proteinG: profile.daily_protein_g ?? 120, fatG: profile.daily_fat_g ?? 70, carbsG: profile.daily_carbs_g ?? 200,
   }, totals);
   const eaten = [...new Set(items.map((item) => item.custom_food_name).filter(Boolean))].slice(-20).join(", ") || "нет записей";
-  const system = `Ты — русскоязычный помощник по питанию CaloriSnap. Сервер рассчитал: цель ${targetCalories} ккал; съедено ${Math.round(totals.calories)} ккал; остаток ${decision.caloriesRemaining} ккал; осталось Б ${decision.macrosRemaining.proteinG} г, Ж ${decision.macrosRemaining.fatG} г, У ${decision.macrosRemaining.carbsG} г; режим ${decision.mode}; уже съедено: ${eaten}. Верни только JSON по схеме. При normal предложи до трёх разных вариантов, каждый не больше остатка, не повторяй уже съеденное. При goal_reached и over_limit recommendations обязан быть пустым: не предлагай еду и не говори, что перекус ничего не испортит. В message — короткое спокойное пояснение, highlights — до трёх коротких фактов. Режим и математику не меняй.`;
-  const models = [process.env.GROQ_CHAT_MODEL ?? "openai/gpt-oss-20b", "openai/gpt-oss-120b"];
+  const preference = detectAdvicePreference(body.messages.filter((message) => message.role === "user").at(-1)?.content ?? "");
+  const previousNames = previousRecommendationNames(body.messages);
+  const preferenceRule = preference === "ready_to_eat"
+    ? "Пользователь явно НЕ ХОЧЕТ ГОТОВИТЬ. Дай только 1–2 действительно готовых к употреблению варианта: их можно купить и съесть сразу. Запрещены рецепты, овсянка, курица с овощами, салаты, нарезка ингредиентов, сковорода, духовка и фразы «легко приготовить»."
+    : preference === "low_effort"
+      ? "Пользователь хочет ленивый вариант: максимум 5 минут, без духовки и сложного приготовления."
+      : "";
+  const system = `Ты — русскоязычный помощник по питанию CaloriSnap. Сервер рассчитал: цель ${targetCalories} ккал; съедено ${Math.round(totals.calories)} ккал; остаток ${decision.caloriesRemaining} ккал; осталось Б ${decision.macrosRemaining.proteinG} г, Ж ${decision.macrosRemaining.fatG} г, У ${decision.macrosRemaining.carbsG} г; режим ${decision.mode}; уже съедено: ${eaten}. ${preferenceRule} Уже предлагались в этом диалоге: ${previousNames.join(", ") || "нет"}; не повторяй их. Верни только JSON по схеме. При normal дай только столько вариантов, сколько реально отвечает последнему сообщению (обычно 1–2, максимум 3), каждый не больше остатка. Не пиши шаблонные вступления, не пересказывай все макросы, не предлагай один и тот же набор еды при разных вопросах. При goal_reached и over_limit recommendations обязан быть пустым: не предлагай еду и не говори, что перекус ничего не испортит. В message — одно короткое человеческое предложение, highlights — только полезные короткие детали (0–2). Режим и математику не меняй.`;
+  const models = [process.env.GROQ_CHAT_MODEL ?? "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
   for (const model of [...new Set(models)]) {
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -72,7 +87,7 @@ export async function POST(request: Request) {
       const json = await response.json();
       const content = json?.choices?.[0]?.message?.content;
       if (typeof content !== "string") continue;
-      const advice = validateAdvice(JSON.parse(content), decision);
+      const advice = validateAdvice(JSON.parse(content), decision, previousNames);
       if (advice) return NextResponse.json({ advice }, { headers: { "Cache-Control": "private, no-store" } });
     } catch { /* Retry once with the backup Groq text model. */ }
   }

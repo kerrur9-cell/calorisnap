@@ -19,8 +19,8 @@ export class FoodAssistantBoundary extends Component<{ children: ReactNode }, { 
 
 function historyText(message: Message) {
   if (!message.advice) return message.content;
-  const cards = message.advice.recommendations.map((item) => `${item.name}, ${item.portion}, ${item.calories} ккал`).join("; ");
-  return [message.advice.message, ...message.advice.highlights, cards].filter(Boolean).join(" ");
+  const names = message.advice.recommendations.map((item) => item.name).join(" | ");
+  return [message.advice.message, ...message.advice.highlights, names && `РЕКОМЕНДОВАНО: ${names}`].filter(Boolean).join("\n");
 }
 
 export function FoodAssistant({ onClose }: { onClose: () => void }) {
