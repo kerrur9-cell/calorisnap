@@ -25,7 +25,19 @@ export function Providers({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
+      void (async () => {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        const hadOldWorker = registrations.length > 0;
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.filter((key) => key.startsWith("calorisnap-")).map((key) => caches.delete(key)));
+        }
+        if (hadOldWorker && !sessionStorage.getItem("calorisnap-cache-reset")) {
+          sessionStorage.setItem("calorisnap-cache-reset", "1");
+          window.location.reload();
+        }
+      })().catch(() => {});
     }
     if (!isSupabaseConfigured()) return;
     let previousId: string | null | undefined;

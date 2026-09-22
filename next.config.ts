@@ -6,8 +6,8 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],
     staleTimes: {
-      dynamic: 300,
-      static: 1800,
+      dynamic: 0,
+      static: 300,
     },
   },
   async headers() {
