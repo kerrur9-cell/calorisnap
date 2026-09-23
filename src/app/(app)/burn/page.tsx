@@ -35,8 +35,10 @@ export default function BurnPage() {
     addWorkout,
     deleteWorkout,
     totalBurnedCalories,
+    totalGrossCalories,
     energyBalance,
     biometrics,
+    isWeightMissing,
   } = useWorkouts(dateKey, consumedCalories);
 
   // Модальные окна
@@ -45,7 +47,7 @@ export default function BurnPage() {
   const [showVoice, setShowVoice] = useState(false);
   const [showManual, setShowManual] = useState(false);
 
-  const userWeightKg = biometrics?.weightKg ?? 55;
+  const userWeightKg = biometrics?.weightKg && biometrics.weightKg > 0 ? biometrics.weightKg : 0;
   const userHeightCm = biometrics?.heightCm ?? 165;
   const userGender = biometrics?.gender ?? "female";
   const userAge = biometrics?.age ?? 25;
@@ -85,6 +87,19 @@ export default function BurnPage() {
           <ChevronRight className="h-5 w-5" />
         </button>
       </header>
+
+      {/* Предупреждение об отсутствии веса в профиле */}
+      {isWeightMissing && (
+        <div className="mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs flex items-center justify-between text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-2">
+            <span className="text-base">⚠️</span>
+            <span>Текущий вес в профиле не указан. Укажите вес для точного физиологического расчёта.</span>
+          </div>
+          <Link href="/profile" className="font-bold underline shrink-0 ml-2">
+            Указать →
+          </Link>
+        </div>
+      )}
 
       {/* Главная карточка суточного энергобаланса и дефицита */}
       <section className="glass-card glossy-sheen scroll-sway mb-4 rounded-3xl p-5 shadow-md">
@@ -126,13 +141,13 @@ export default function BurnPage() {
           </div>
         </div>
 
-        {/* Разложение калорий на составляющие */}
+        {/* Разложение калорий на составляющие (без двойного учёта BMR) */}
         <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl bg-muted/40 p-3 text-center text-xs">
           <div className="border-r border-border/50 pr-1">
             <div className="font-semibold text-foreground tabular-nums">
               {energyBalance.bmr} <span className="text-[10px] text-muted-foreground">ккал</span>
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5" title="Базовый обмен веществ на ваш вес в покое">
+            <div className="text-[10px] text-muted-foreground mt-0.5" title="Базовый обмен веществ на ваш вес в покое за 24 ч">
               Базовый (BMR)
             </div>
           </div>
@@ -141,8 +156,8 @@ export default function BurnPage() {
             <div className="font-bold text-orange-500 tabular-nums">
               +{totalBurnedCalories} <span className="text-[10px] text-muted-foreground">ккал</span>
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
-              Тренировки
+            <div className="text-[10px] text-muted-foreground mt-0.5" title="Активный расход тренировок сверх покоя (не дублирует BMR)">
+              Активно {totalGrossCalories > totalBurnedCalories ? `(~${totalGrossCalories})` : ""}
             </div>
           </div>
 
@@ -157,9 +172,11 @@ export default function BurnPage() {
         </div>
 
         <div className="mt-2.5 flex items-center justify-between text-[11px] text-muted-foreground px-1">
-          <span>Вес в профиле: <b>{userWeightKg} кг</b></span>
+          <span>
+            Вес в расчёте: <b>{userWeightKg > 0 ? `${userWeightKg} кг` : "не указан (расчёт по умолчанию)"}</b>
+          </span>
           <Link href="/profile" className="text-primary hover:underline">
-            Изменить параметры →
+            {userWeightKg > 0 ? "Изменить в профиле →" : "Указать в профиле →"}
           </Link>
         </div>
       </section>
@@ -294,7 +311,10 @@ export default function BurnPage() {
                         : w.sets
                         ? `${w.sets} подх. ${w.reps ? `× ${w.reps}` : ""}`
                         : "Упражнение"}
+                      {w.speedKmh ? ` · ${w.speedKmh} км/ч` : ""}
+                      {typeof w.inclinePercent === "number" ? ` · ${w.inclinePercent}%` : ""}
                       {w.weightKg ? ` · ${w.weightKg} кг` : ""}
+                      {w.met ? ` · ${w.met} MET` : ""}
                       {w.targetMuscles && w.targetMuscles.length > 0
                         ? ` · ${w.targetMuscles[0]}`
                         : ""}
@@ -303,9 +323,16 @@ export default function BurnPage() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 ml-2">
-                  <span className="font-extrabold text-sm text-orange-500 tabular-nums">
-                    +{w.caloriesBurned} <span className="text-[10px] font-normal">ккал</span>
-                  </span>
+                  <div className="text-right">
+                    <span className="font-extrabold text-sm text-orange-500 tabular-nums block">
+                      +{w.caloriesBurned} <span className="text-[10px] font-normal">ккал</span>
+                    </span>
+                    {w.grossCalories && w.grossCalories !== w.caloriesBurned && (
+                      <span className="text-[10px] text-muted-foreground block">
+                        полный ~{w.grossCalories}
+                      </span>
+                    )}
+                  </div>
                   <button
                     onClick={() => deleteWorkout(w.id)}
                     className="rounded-full p-1.5 text-muted-foreground hover:text-danger hover:bg-muted transition-colors"
@@ -325,6 +352,9 @@ export default function BurnPage() {
         isOpen={showCatalog}
         onClose={() => setShowCatalog(false)}
         userWeightKg={userWeightKg}
+        userHeightCm={userHeightCm}
+        userGender={userGender}
+        userAge={userAge}
         onAddWorkout={addWorkout}
       />
 
@@ -332,7 +362,9 @@ export default function BurnPage() {
         isOpen={showPhoto}
         onClose={() => setShowPhoto(false)}
         userWeightKg={userWeightKg}
+        userHeightCm={userHeightCm}
         userGender={userGender}
+        userAge={userAge}
         onAddWorkout={addWorkout}
       />
 
@@ -349,6 +381,10 @@ export default function BurnPage() {
       <ManualWorkoutModal
         isOpen={showManual}
         onClose={() => setShowManual(false)}
+        userWeightKg={userWeightKg}
+        userHeightCm={userHeightCm}
+        userGender={userGender}
+        userAge={userAge}
         onAddWorkout={addWorkout}
       />
     </main>

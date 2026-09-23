@@ -218,12 +218,12 @@ export interface GeminiJsonOptions<T = unknown> {
 const JSON_CANDIDATE_MODELS = [
   "gemini-3-flash-preview",
   "gemini-3.6-flash",
-  "gemini-3.5-flash-lite",
+  "gemini-3.5-flash",
 ];
 
 /**
  * Универсальная генерация структурированного JSON через Gemini.
- * Автоматически перебирает быстрые надёжные модели (flash-lite -> flash)
+ * Автоматически перебирает быстрые надёжные модели (flash-preview -> 3.6-flash)
  * и ключи (основной -> запасной), снимает markdown и валидирует Zod схему.
  */
 export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions<T>): Promise<T> {
@@ -286,7 +286,7 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
       try {
         const remaining = deadline - Date.now();
         if (remaining <= 0) throw lastError ?? new Error("AI request timed out");
-        const res = await callGemini(body, key, model, Math.min(22_000, remaining));
+        const res = await callGemini(body, key, model, Math.min(10_000, remaining));
         if (!res.ok) {
           lastError = new Error(res.message);
           continue;

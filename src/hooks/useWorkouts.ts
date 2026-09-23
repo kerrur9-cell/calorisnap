@@ -14,6 +14,9 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Проверяем наличие веса в профиле
+  const isWeightMissing = !profile?.current_weight_kg || profile.current_weight_kg <= 0;
+
   // Биометрические данные пользователя из профиля
   const biometrics: UserBiometrics | null = useMemo(() => {
     if (!profile) return null;
@@ -22,7 +25,7 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
       gender: profile.gender ?? "female",
       age: age ?? 25,
       heightCm: profile.height_cm ?? 165,
-      weightKg: profile.current_weight_kg ?? 55,
+      weightKg: profile.current_weight_kg && profile.current_weight_kg > 0 ? profile.current_weight_kg : 0,
     };
   }, [profile]);
 
@@ -72,6 +75,14 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
             reps: row.reps ? Number(row.reps) : undefined,
             weightKg: row.weight_kg ? Number(row.weight_kg) : undefined,
             caloriesBurned: Number(row.calories_burned ?? 0),
+            grossCalories: row.gross_calories ? Number(row.gross_calories) : Number(row.calories_burned ?? 0),
+            activeCalories: row.active_calories ? Number(row.active_calories) : Number(row.calories_burned ?? 0),
+            met: row.met ? Number(row.met) : undefined,
+            speedKmh: row.speed_kmh ? Number(row.speed_kmh) : undefined,
+            inclinePercent: row.incline_percent ? Number(row.incline_percent) : undefined,
+            userWeightUsedKg: row.user_weight_used_kg ? Number(row.user_weight_used_kg) : undefined,
+            calculationMethod: row.calculation_method as WorkoutEntry["calculationMethod"],
+            calculationDetails: row.calculation_details ? String(row.calculation_details) : undefined,
             targetMuscles: Array.isArray(row.target_muscles) ? (row.target_muscles as string[]) : undefined,
             notes: row.notes ? String(row.notes) : undefined,
             equipmentPhotoUrl: row.equipment_photo_url ? String(row.equipment_photo_url) : undefined,
@@ -129,6 +140,14 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
             reps: newEntry.reps,
             weight_kg: newEntry.weightKg,
             calories_burned: newEntry.caloriesBurned,
+            gross_calories: newEntry.grossCalories,
+            active_calories: newEntry.activeCalories ?? newEntry.caloriesBurned,
+            met: newEntry.met,
+            speed_kmh: newEntry.speedKmh,
+            incline_percent: newEntry.inclinePercent,
+            user_weight_used_kg: newEntry.userWeightUsedKg,
+            calculation_method: newEntry.calculationMethod,
+            calculation_details: newEntry.calculationDetails,
             target_muscles: newEntry.targetMuscles,
             notes: newEntry.notes,
             equipment_photo_url: newEntry.equipmentPhotoUrl,
@@ -166,21 +185,29 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
     [dateKey],
   );
 
-  // Суммарные сожженные калории за день
+  // Суммарные активные сожженные калории за день (идут в суточный дефицит)
   const totalBurnedCalories = useMemo(
-    () => workouts.reduce((sum, w) => sum + (w.caloriesBurned || 0), 0),
+    () => workouts.reduce((sum, w) => sum + (w.activeCalories ?? w.caloriesBurned ?? 0), 0),
     [workouts],
   );
 
-  // Энергобаланс дня (BMR + Тренировки vs Съедено)
+  // Суммарные полные калории тренировок за день
+  const totalGrossCalories = useMemo(
+    () => workouts.reduce((sum, w) => sum + (w.grossCalories ?? w.caloriesBurned ?? 0), 0),
+    [workouts],
+  );
+
+  // Энергобаланс дня (BMR + Активные тренировки vs Съедено)
+  // Исключает двойной учёт BMR
   const energyBalance = useMemo(
     () =>
       calculateEnergyBalance({
         biometrics,
         burnedCalories: totalBurnedCalories,
+        grossBurnedCalories: totalGrossCalories,
         consumedCalories,
       }),
-    [biometrics, totalBurnedCalories, consumedCalories],
+    [biometrics, totalBurnedCalories, totalGrossCalories, consumedCalories],
   );
 
   return {
@@ -189,7 +216,9 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
     addWorkout,
     deleteWorkout,
     totalBurnedCalories,
+    totalGrossCalories,
     energyBalance,
     biometrics,
+    isWeightMissing,
   };
 }

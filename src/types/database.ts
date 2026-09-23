@@ -160,6 +160,14 @@ export type WorkoutDbEntry = {
   reps: number | null;
   weight_kg: number | null;
   calories_burned: number;
+  gross_calories?: number | null;
+  active_calories?: number | null;
+  met?: number | null;
+  speed_kmh?: number | null;
+  incline_percent?: number | null;
+  user_weight_used_kg?: number | null;
+  calculation_method?: "acsm" | "compendium" | "strength_tut" | "manual" | null;
+  calculation_details?: string | null;
   target_muscles: string[] | null;
   notes: string | null;
   equipment_photo_url: string | null;

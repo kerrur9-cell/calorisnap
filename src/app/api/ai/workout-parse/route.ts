@@ -1,28 +1,36 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateGeminiJson } from "@/lib/ai/gemini";
-import { calculateParsedWorkoutCalories } from "@/lib/workout/calculator";
+import { calculateDetailedWorkout } from "@/lib/workout/calculator";
 
 export const maxDuration = 25;
 
 const workoutParseRequestSchema = z.object({
   text: z.string().min(1),
-  userWeightKg: z.number().optional().default(55),
-  userHeightCm: z.number().optional().default(165),
+  userWeightKg: z.number().optional().nullable(),
+  userHeightCm: z.number().optional().nullable(),
   userGender: z.enum(["male", "female"]).optional().default("female"),
   userAge: z.number().optional().default(25),
 });
 
-const workoutResponseSchema = z.object({
-  exerciseName: z.string().default("Упражнение"),
-  category: z.enum(["cardio", "strength", "machine", "bodyweight"]).catch("machine"),
-  durationMinutes: z.number().optional().nullable(),
-  sets: z.number().optional().nullable(),
-  reps: z.number().optional().nullable(),
-  weightKg: z.number().optional().nullable(),
-  caloriesBurned: z.number().default(30),
+const aiExtractionSchema = z.object({
+  exerciseName: z.string().default("Физическая активность"),
+  activityKey: z.string().default("general"),
+  category: z.enum(["cardio", "strength", "machine", "bodyweight"]).catch("cardio"),
+  durationMinutes: z.number().nullable().optional(),
+  durationExplicitlyProvided: z.boolean().default(false),
+  speedKmh: z.number().nullable().optional(),
+  speedExplicitlyProvided: z.boolean().default(false),
+  inclinePercent: z.number().nullable().optional(),
+  inclineExplicitlyProvided: z.boolean().default(false),
+  intensity: z.enum(["light", "moderate", "brisk", "vigorous"]).nullable().optional(),
+  sets: z.number().nullable().optional(),
+  reps: z.number().nullable().optional(),
+  weightKg: z.number().nullable().optional(),
   targetMuscles: z.array(z.string()).default([]),
-  advice: z.string().default("Отличная работа! Продолжайте в том же духе."),
+  isAmbiguous: z.boolean().default(false),
+  ambiguityNote: z.string().nullable().optional(),
+  neutralCommentary: z.string().default(""),
 });
 
 export async function POST(req: Request) {
@@ -39,58 +47,108 @@ export async function POST(req: Request) {
 
     const { text, userWeightKg, userHeightCm, userGender, userAge } = parsedInput.data;
 
-    const systemPrompt = `Ты профессиональный спортивный физиолог и нутрициолог приложения CaloriSnap.
-Пользователь описывает выполненное упражнение или тренировку (текстом или расшифровкой голоса).
-Твоя задача:
-1. Понять, какое именно упражнение/активность выполнена.
-2. Определить категорию: "cardio" (кардио/бег/ходьба/эллипс), "strength" (свободные веса), "machine" (тренажеры), "bodyweight" (собственный вес).
-3. Извлечь параметры: подходы (sets), повторения (reps), рабочий вес отягощения (weightKg) или длительность в минутах (durationMinutes).
-4. Оценить расход калорий (caloriesBurned, целое число ккал):
-   ВНИМАНИЕ: ОДНО силовое упражнение (3-4 подхода) длится суммарно всего ~4–7 минут и расходует около 15–45 ккал!
-   НИ В КОЕМ СЛУЧАЕ НЕ ПУТАЙ 1 упражнение со всей часовой тренировкой в зале!
-   4 подхода жима ногами или приседаний — это всего ~35–45 ккал (около 8–10 ккал на подход), а НЕ 150-200 ккал!
-   Изоляция (руки, плечи, пресс) — всего 10–20 ккал на упражнение!
-5. Указать основные целевые мышцы на русском (targetMuscles, 2-3 группы).
-6. Дать короткий теплый совет по технике и пользе (advice, 1-2 предложения, дружелюбный тон).
+    const systemPrompt = `Ты аналитический модуль структурирования данных физической активности приложения CaloriSnap.
+Твоя задача — ТОЛЬКО распознать и структурировать информацию из текста пользователя.
+Ты НЕ рассчитываешь калории! Калории рассчитываются отдельным физиологическим калькулятором на основе Compendium of Physical Activities и формул ACSM.
+
+Правила распознавания:
+1. "exerciseName": нормализованное понятное название активности на русском языке (например: "Быстрая ходьба на беговой дорожке", "Жим ногами 45°", "Бег на улице", "Приседания со штангой").
+2. "category": строго одна из: "cardio", "strength", "machine", "bodyweight".
+3. "durationMinutes": число минут, если пользователь ЕГО УКАЗАЛ. Если пользователь НЕ назвал время (например, "я бегал"), верни null, а "durationExplicitlyProvided": false. НЕ ВЫДУМЫВАЙ время!
+4. "speedKmh": скорость в км/ч, ЕСЛИ указана (например, "со скоростью 6.7 км/ч" -> 6.7, "10 км/ч" -> 10). Если не указана — верни null, "speedExplicitlyProvided": false.
+5. "inclinePercent": процент наклона беговой дорожки (например, "с наклоном 3%" -> 3, "без наклона" -> 0, "в гору 5%" -> 5).
+   ВНИМАНИЕ: Если пользователь НЕ упоминал наклон, НЕ ПРИДУМЫВАЙ 0! Верни null и "inclineExplicitlyProvided": false.
+6. "sets", "reps", "weightKg": число подходов, повторений и рабочий вес снаряда (штанга/гантель/тренажёр), если указаны в силовых упражнениях.
+7. Неоднозначность ("isAmbiguous", "ambiguityNote"):
+   Если скорость около 6.5–7.2 км/ч и неясно, был это шаг или бег — укажи neutral формулировку и отметь "isAmbiguous": true, "ambiguityNote": "При такой скорости возможна как очень быстрая ходьба, так и лёгкий бег трусцой".
+8. "targetMuscles": 2-3 основные группы мышц на русском языке (например: ["Квадрицепсы", "Ягодицы", "Икры"]).
+9. "neutralCommentary": КРАТКИЙ, объективный и научно обоснованный комментарий (1-2 предложения).
+   ВАЖНО:
+   - БЕЗ фамильярности, без бессмысленной похвалы ("Отличное начало!", "Так держать!").
+   - БЕЗ категоричных медицинских суждений о том, кому подходит данная тренировка.
+   - Пример правильного тона: "Быстрая ходьба задействует мышцы ног и стимулирует сердечно-сосудистую систему. Субъективная нагрузка зависит от индивидуального уровня подготовки."
 
 Отвечай СТРОГО в формате JSON без markdown:
 {
-  "exerciseName": string (название на русском),
+  "exerciseName": string,
+  "activityKey": string,
   "category": "cardio" | "strength" | "machine" | "bodyweight",
   "durationMinutes": number | null,
+  "durationExplicitlyProvided": boolean,
+  "speedKmh": number | null,
+  "speedExplicitlyProvided": boolean,
+  "inclinePercent": number | null,
+  "inclineExplicitlyProvided": boolean,
+  "intensity": "light" | "moderate" | "brisk" | "vigorous" | null,
   "sets": number | null,
   "reps": number | null,
   "weightKg": number | null,
-  "caloriesBurned": number,
   "targetMuscles": string[],
-  "advice": string
+  "isAmbiguous": boolean,
+  "ambiguityNote": string | null,
+  "neutralCommentary": string
 }`;
 
-    const result = await generateGeminiJson({
+    const ai = await generateGeminiJson({
       systemPrompt,
       prompt: `Описание тренировки от пользователя: "${text}"`,
-      schema: workoutResponseSchema,
-      temperature: 0.2,
-      timeoutMs: 15_000,
+      schema: aiExtractionSchema,
+      temperature: 0.1,
+      timeoutMs: 22_000,
     });
 
-    // Строгий физиологический расчет на сервере исключает любые завышения и галлюцинации LLM
-    const exactCalories = calculateParsedWorkoutCalories({
-      exerciseName: result.exerciseName,
-      category: result.category,
-      durationMinutes: result.durationMinutes,
-      sets: result.sets,
-      reps: result.reps,
-      weightKg: result.weightKg,
+    // Отдельный математический расчёт расхода калорий (Compendium MET + ACSM)
+    const detailedCalculation = calculateDetailedWorkout({
+      exerciseName: ai.exerciseName,
+      category: ai.category,
+      durationMinutes: ai.durationMinutes,
+      speedKmh: ai.speedKmh,
+      inclinePercent: ai.inclinePercent,
+      sets: ai.sets,
+      reps: ai.reps,
+      weightKg: ai.weightKg,
       userWeightKg,
-      userHeightCm,
-      userGender,
+      userHeightCm: userHeightCm ?? undefined,
+      userGender: userGender ?? "female",
       userAge,
     });
 
     return NextResponse.json({
-      ...result,
-      caloriesBurned: exactCalories,
+      exerciseName: ai.exerciseName,
+      category: ai.category,
+      activityKey: ai.activityKey,
+      durationMinutes: ai.durationMinutes ?? null,
+      durationExplicitlyProvided: ai.durationExplicitlyProvided,
+      speedKmh: ai.speedKmh ?? null,
+      speedExplicitlyProvided: ai.speedExplicitlyProvided,
+      inclinePercent: ai.inclinePercent ?? null,
+      inclineExplicitlyProvided: ai.inclineExplicitlyProvided,
+      intensity: ai.intensity ?? null,
+      sets: ai.sets ?? null,
+      reps: ai.reps ?? null,
+      weightKg: ai.weightKg ?? null,
+      targetMuscles: ai.targetMuscles,
+      isAmbiguous: ai.isAmbiguous,
+      ambiguityNote: ai.ambiguityNote ?? null,
+      advice: ai.neutralCommentary,
+      commentary: ai.neutralCommentary,
+      needsDuration: !ai.durationMinutes || !ai.durationExplicitlyProvided,
+      needsWeight: !userWeightKg || userWeightKg <= 0,
+      // Детальные физиологические результаты расчёта
+      calculation: {
+        grossCalories: detailedCalculation.grossCalories,
+        activeCalories: detailedCalculation.activeCalories,
+        met: detailedCalculation.met,
+        calculationMethod: detailedCalculation.calculationMethod,
+        explanation: detailedCalculation.explanation,
+        userWeightUsedKg: detailedCalculation.userWeightKg,
+        isWeightEstimated: detailedCalculation.isWeightEstimated,
+        isDurationEstimated: detailedCalculation.isDurationEstimated,
+      },
+      // Обратная совместимость для полей caloriesBurned
+      caloriesBurned: detailedCalculation.activeCalories,
+      grossCalories: detailedCalculation.grossCalories,
+      activeCalories: detailedCalculation.activeCalories,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Не удалось распознать упражнение";

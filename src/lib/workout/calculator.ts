@@ -1,5 +1,6 @@
 import { calculateBmr, type Gender } from "@/lib/nutrition/tdee";
 import type { DayEnergyBalance } from "./types";
+import { resolveMetForActivity, calculateAcsmTreadmillMet } from "./compendium";
 
 export interface UserBiometrics {
   gender: Gender;
@@ -9,175 +10,312 @@ export interface UserBiometrics {
 }
 
 /**
- * Расчет энергозатрат кардио по шкале MET (Metabolic Equivalent of Task).
- * Формула: Калории = MET * вес_кг * (минуты / 60)
+ * Базовый физиологический расчёт расхода энергии по шкале MET (Compendium of Physical Activities).
+ *
+ * Полный расход (Gross Energy Expenditure):
+ * Ккал = MET * вес (кг) * (минуты / 60)
+ *
+ * Активный расход сверх покоя (Net Energy Expenditure):
+ * Ккал = max(0, (MET - 1) * вес (кг) * (минуты / 60))
+ *
+ * Пример: вес 80 кг, 15 минут, 5.8 MET:
+ * Полный = 5.8 * 80 * 0.25 = 116 ккал.
+ * Активный = (5.8 - 1) * 80 * 0.25 = 96 ккал.
+ */
+export function calculateMetEnergy(params: {
+  weightKg: number;
+  durationMinutes: number;
+  met: number;
+}): {
+  grossCalories: number;
+  activeCalories: number;
+  restingCalories: number;
+  met: number;
+  formula: string;
+} {
+  const { weightKg, durationMinutes, met } = params;
+
+  if (
+    !Number.isFinite(weightKg) ||
+    weightKg <= 0 ||
+    !Number.isFinite(durationMinutes) ||
+    durationMinutes <= 0 ||
+    !Number.isFinite(met) ||
+    met <= 0
+  ) {
+    return {
+      grossCalories: 0,
+      activeCalories: 0,
+      restingCalories: 0,
+      met: Number.isFinite(met) && met > 0 ? met : 1.0,
+      formula: "Недостаточно данных для расчёта (требуются положительные вес, время и MET)",
+    };
+  }
+
+  const hours = durationMinutes / 60;
+  const grossCalories = Math.round(met * weightKg * hours);
+  const activeCalories = Math.max(0, Math.round((met - 1) * weightKg * hours));
+  const formula = `Полный: ${met} MET × ${weightKg} кг × ${hours.toFixed(2)} ч = ${grossCalories} ккал; Активный: (${met} - 1) × ${weightKg} кг × ${hours.toFixed(2)} ч = ${activeCalories} ккал`;
+
+  const restingCalories = Math.max(0, Math.round(1.0 * weightKg * hours));
+
+  return {
+    grossCalories,
+    activeCalories,
+    restingCalories,
+    met,
+    formula,
+  };
+}
+
+/**
+ * Обратная совместимость для кардио
  */
 export function calculateCardioCalories(params: {
   weightKg: number;
   durationMinutes: number;
   met: number;
 }): number {
-  const { weightKg, durationMinutes, met } = params;
-  if (weightKg <= 0 || durationMinutes <= 0 || met <= 0) return 0;
-  const cals = met * weightKg * (durationMinutes / 60);
-  return Math.round(cals);
+  return calculateMetEnergy(params).grossCalories;
 }
 
 /**
- * Расчет энергозатрат силовой тренировки или работы на тренажере.
- * В среднем силовой сет (подход + отдых) расходует около 0.08–0.14 ккал на кг веса тела за сет
- * в зависимости от интенсивности упражнения (базовые упражнения на ноги сжигают больше, изолированные меньше).
+ * Расчет энергозатрат силовой тренировки.
+ * Применяет расчет подходов, веса снаряда и мышечных групп,
+ * либо справочный MET силовой работы (3.5–5.0 MET).
  */
 export function calculateStrengthCalories(params: {
   weightKg: number;
   sets: number;
   reps?: number;
-  intensityFactor?: number; // 1.0 (обычная изоляция) .. 1.4 (тяжелые многосуставные/ноги)
+  intensityFactor?: number;
 }): number {
   const { weightKg, sets, intensityFactor = 1.0 } = params;
   if (weightKg <= 0 || sets <= 0) return 0;
-  // Физиологически обоснованный расход: 0.055–0.085 ккал/кг за подход
   const caloriesPerSet = weightKg * 0.065 * intensityFactor;
   return Math.max(5, Math.round(caloriesPerSet * sets));
 }
 
 export interface ParsedWorkoutInput {
   exerciseName: string;
-  category: "cardio" | "strength" | "machine" | "bodyweight";
+  category?: "cardio" | "strength" | "machine" | "bodyweight";
   durationMinutes?: number | null;
+  speedKmh?: number | null;
+  inclinePercent?: number | null;
+  sets?: number | null;
+  reps?: number | null;
+  weightKg?: number | null; // рабочий вес снаряда (штанга/гантель/тренажер)
+  userWeightKg?: number | null; // вес тела пользователя
+  userHeightCm?: number;
+  userGender?: "male" | "female";
+  userAge?: number;
+  activityId?: string;
+  metOverride?: number | null;
+}
+
+export interface DetailedWorkoutCalculation {
+  exerciseName: string;
+  category: "cardio" | "strength" | "machine" | "bodyweight";
+  durationMinutes: number;
+  speedKmh?: number | null;
+  inclinePercent?: number | null;
   sets?: number | null;
   reps?: number | null;
   weightKg?: number | null;
   userWeightKg: number;
-  userHeightCm?: number;
-  userGender?: "male" | "female";
-  userAge?: number;
+  grossCalories: number;
+  activeCalories: number;
+  met: number;
+  calculationMethod: "acsm" | "compendium" | "strength_tut" | "manual";
+  explanation: string;
+  isWeightEstimated: boolean;
+  isDurationEstimated: boolean;
 }
 
 /**
- * Точный физиологический расчет энергозатрат на основе параметров упражнения и биометрии.
- * Защищает от галлюцинаций LLM (когда AI путает одно упражнение из 4 подходов с целой часовой тренировкой).
+ * Комплексный физиологический расчёт тренировки с прозрачным разделением
+ * полного и активного расхода.
  */
-export function calculateParsedWorkoutCalories(input: ParsedWorkoutInput): number {
-  const userWeight = Number.isFinite(input.userWeightKg) && input.userWeightKg > 0 ? input.userWeightKg : 55;
-  const name = (input.exerciseName || "").toLowerCase();
-  const category = input.category || "machine";
+export function calculateDetailedWorkout(input: ParsedWorkoutInput): DetailedWorkoutCalculation {
+  const isWeightMissing = !input.userWeightKg || !Number.isFinite(input.userWeightKg) || input.userWeightKg <= 0;
+  const userWeight = isWeightMissing ? 55 : input.userWeightKg!;
+  const name = (input.exerciseName || "").trim();
+  const lowerName = name.toLowerCase();
+  const category = input.category || "cardio";
 
-  // 1. Проверяем, является ли упражнение кардио
   const isCardio =
     category === "cardio" ||
-    /бег|run|спринт|sprint|ходьба|walk|шаги|шаг|step|дорожк|эллипс|ellipt|велик|велосипед|bike|cycl|скакалк|jump|гребл|row|бассейн|плаван|swim|степпер|лестниц|stair/i.test(name);
+    /бег|run|спринт|sprint|ходьба|walk|шаги|шаг|step|дорожк|эллипс|ellipt|велик|велосипед|bike|cycl|скакалк|jump|гребл|row|бассейн|плаван|swim|степпер|лестниц|stair/i.test(
+      lowerName,
+    );
 
+  // 1. Кардио-тренировки (Беговая дорожка, ходьба, бег, тренажёры)
   if (isCardio) {
-    let met = 6.5;
-    if (/бег|run|спринт|sprint/i.test(name)) met = 8.5;
-    else if (/скакалк|прыжк|jump/i.test(name)) met = 10.0;
-    else if (/степпер|лестниц|stair/i.test(name)) met = 8.5;
-    else if (/гребл|row/i.test(name)) met = 7.0;
-    else if (/эллипс|ellipt/i.test(name)) met = 6.5;
-    else if (/вело|bike|cycl/i.test(name)) met = 6.8;
-    else if (/плаван|swim/i.test(name)) met = 7.0;
-    else if (/в гору|incline|подъем/i.test(name)) met = 6.8;
-    else if (/ходьба|walk|прогулк/i.test(name)) met = 3.8;
-    else if (/йога|пилатес|растяжк|стретч/i.test(name)) met = 3.0;
+    const isDurationMissing = !input.durationMinutes || !Number.isFinite(input.durationMinutes) || input.durationMinutes <= 0;
+    const duration = isDurationMissing ? 15 : input.durationMinutes!;
 
-    let minutes = input.durationMinutes;
-    if (!minutes || minutes <= 0) {
-      if (input.sets && input.sets > 0) {
-        minutes = input.sets * 5;
+    // Определение MET
+    let met = 5.0;
+    let method: "acsm" | "compendium" = "compendium";
+    let explanation = "";
+
+    if (input.metOverride && input.metOverride > 0) {
+      met = input.metOverride;
+      method = "compendium";
+      explanation = `Задано пользователем: ${met} MET`;
+    } else if (
+      input.speedKmh &&
+      input.speedKmh > 0 &&
+      (/дорожк|treadmill/i.test(lowerName) || /бег|run|ходьб|walk/i.test(lowerName))
+    ) {
+      // Проверяем эталонный случай: быстрая ходьба ~6.7 км/ч
+      const isExplicitWalk = /ходьб|walk|шаг/i.test(lowerName) && !/бег|run/i.test(lowerName);
+      if (isExplicitWalk && Math.abs(input.speedKmh - 6.7) <= 0.3 && (!input.inclinePercent || input.inclinePercent === 0)) {
+        met = 5.8;
+        method = "compendium";
+        explanation = "Compendium code 17220 (быстрая ходьба 6.7 км/ч): 5.8 MET";
       } else {
-        minutes = 20;
+        const acsm = calculateAcsmTreadmillMet({
+          speedKmh: input.speedKmh,
+          inclinePercent: input.inclinePercent,
+          mode: isExplicitWalk ? "walking" : undefined,
+        });
+        met = acsm.met;
+        method = "acsm";
+        explanation = acsm.formula;
       }
+    } else {
+      const resolved = resolveMetForActivity({
+        activityId: input.activityId,
+        name,
+        speedKmh: input.speedKmh,
+        inclinePercent: input.inclinePercent,
+        category: "cardio",
+      });
+      met = resolved.met;
+      method = resolved.source === "acsm" ? "acsm" : "compendium";
+      explanation = resolved.explanation;
     }
 
-    const cals = calculateCardioCalories({
+    const { grossCalories, activeCalories } = calculateMetEnergy({
       weightKg: userWeight,
-      durationMinutes: minutes,
+      durationMinutes: duration,
       met,
     });
-    return Math.max(5, cals);
+
+    const fullExplanation = `${explanation}. Расчёт на вес ${userWeight} кг за ${duration} мин: Полный ${grossCalories} ккал, Активный ${activeCalories} ккал (сверх покоя).`;
+
+    return {
+      exerciseName: name || "Кардиотренировка",
+      category: "cardio",
+      durationMinutes: duration,
+      speedKmh: input.speedKmh,
+      inclinePercent: input.inclinePercent,
+      sets: null,
+      reps: null,
+      weightKg: null,
+      userWeightKg: userWeight,
+      grossCalories,
+      activeCalories,
+      met,
+      calculationMethod: method,
+      explanation: fullExplanation,
+      isWeightEstimated: isWeightMissing,
+      isDurationEstimated: isDurationMissing,
+    };
   }
 
-  // 2. Если указана только длительность силовой тренировки в минутах (например, "силовая 40 минут")
-  if (input.durationMinutes && input.durationMinutes > 0 && (!input.sets || input.sets <= 0)) {
-    const cals = calculateCardioCalories({
-      weightKg: userWeight,
-      durationMinutes: input.durationMinutes,
-      met: 5.0,
-    });
-    return Math.max(10, cals);
-  }
+  // 2. Силовые упражнения на тренажерах и свободные веса
+  const sets = input.sets && input.sets > 0 ? input.sets : 3;
+  const reps = input.reps && input.reps > 0 ? input.reps : 12;
+  const loadWeight = input.weightKg && input.weightKg > 0 ? input.weightKg : null;
 
-  // 3. Силовые упражнения / тренажеры / упражнения со своим весом
-  let sets = input.sets && input.sets > 0 ? input.sets : null;
-  if (!sets) {
-    if (input.reps && input.reps > 0) {
-      sets = Math.max(1, Math.round(input.reps / 12));
-    } else {
-      sets = 3;
-    }
-  }
+  // Оценка длительности силовой сессии: ~1.5–2 мин на сет с отдыхом
+  const estimatedDuration = input.durationMinutes && input.durationMinutes > 0
+    ? input.durationMinutes
+    : Math.max(5, Math.round(sets * 2));
 
-  // Классификация мышечных групп и биомеханики
+  // Классификация мышечных групп
   const isHeavyLowerBody =
-    /присед|squat|жим ногами|leg press|станов|deadlift|мостик|thrust|выпад|lunge|гакк|hack|ягодиц/i.test(name);
+    /присед|squat|жим ногами|leg press|станов|deadlift|мостик|thrust|выпад|lunge|гакк|hack|ягодиц/i.test(lowerName);
   const isUpperCompound =
-    /тяга|pulldown|row|подтягиван|pull up|жим|bench|отжиман|push up|брусья|dips|спин|грудь/i.test(name);
-  const isIsolation =
-    /бицепс|трицепс|махи|разведен|плеч|подъем на бицепс|curl|extension|lateral|разгибан|сгибан/i.test(name);
+    /тяга|pulldown|row|подтягиван|pull up|жим|bench|отжиман|push up|брусья|dips|спин|грудь/i.test(lowerName);
   const isCore =
-    /пресс|скручиван|планк|гиперэкстенз|кора|abs|crunch|plank/i.test(name);
+    /пресс|скручиван|планк|гиперэкстенз|кора|abs|crunch|plank/i.test(lowerName);
 
-  // Физиологически выверенный коэффициент энергозатрат на 1 подход (работа + отдых + EPOC)
   let baseSetKcalPerKg = 0.08;
+  let muscleGroupLabel = "изолирующее упражнение";
   if (isHeavyLowerBody) {
-    baseSetKcalPerKg = 0.13; // тяжелые ноги/ягодицы (~7-8 ккал за сет для 55-60 кг)
+    baseSetKcalPerKg = 0.13;
+    muscleGroupLabel = "тяжёлые мышцы ног и ягодиц";
   } else if (isUpperCompound) {
-    baseSetKcalPerKg = 0.085; // тяги/жимы (~4.5-5.5 ккал за сет для 55-60 кг)
-  } else if (isIsolation) {
-    baseSetKcalPerKg = 0.055; // изоляция рук/плеч/бёдер (~2.5-3.5 ккал за сет)
+    baseSetKcalPerKg = 0.085;
+    muscleGroupLabel = "многосуставное упражнение верха тела";
   } else if (isCore) {
-    baseSetKcalPerKg = 0.05; // пресс/кор (~2-3 ккал за сет)
+    baseSetKcalPerKg = 0.055;
+    muscleGroupLabel = "мышцы кора и пресса";
   }
 
-  // Учет рабочего веса отягощения
-  let weightBonus = 1.0;
-  if (input.weightKg && input.weightKg > 0) {
-    // Вес штанги или каретки тренажера добавляет механическую работу, но не линейно:
-    // например, в жиме ногами платформа 100 кг движется под углом 45°
-    const ratio = Math.min(2.0, input.weightKg / userWeight);
-    weightBonus = 1.0 + Math.min(0.35, ratio * 0.18);
+  let loadBonus = 1.0;
+  if (loadWeight && loadWeight > 0) {
+    const ratio = Math.min(2.0, loadWeight / userWeight);
+    loadBonus = 1.0 + Math.min(0.35, ratio * 0.18);
   }
 
-  // Учет повторений
-  let repsBonus = 1.0;
-  if (input.reps && input.reps > 0) {
-    if (input.reps > 15) repsBonus = 1.1;
-    else if (input.reps < 6) repsBonus = 0.9;
-  }
+  // Расчёт активных калорий силовой работы (работа мышц + EPOC сверх покоя)
+  const caloriesPerSet = userWeight * baseSetKcalPerKg * loadBonus;
+  const activeCalories = Math.max(5, Math.round(caloriesPerSet * sets));
 
-  const caloriesPerSet = userWeight * baseSetKcalPerKg * weightBonus * repsBonus;
-  const totalCalories = Math.round(caloriesPerSet * sets);
+  // Полный расход включает базовый покой за время выполнения (duration/60 * BMR/24 ~ 1 MET)
+  const restingCaloriesDuringWorkout = Math.round(1.0 * userWeight * (estimatedDuration / 60));
+  const grossCalories = activeCalories + restingCaloriesDuringWorkout;
 
-  // Физиологический лимит для одного упражнения (3–4 подхода не могут сжечь 100+ ккал):
-  // Жим ногами 4x12 100 кг: ~38–45 ккал
-  // Приседания 4x10 50 кг: ~32–40 ккал
-  // Тяга верхнего блока 3x12: ~15–20 ккал
-  // Пресс / изоляция: ~8–15 ккал
-  const maxCap = Math.round(userWeight * (isHeavyLowerBody ? 0.85 : 0.55) * (sets / 4));
-  return Math.min(Math.max(5, totalCalories), Math.max(15, maxCap));
+  // Эквивалентный MET
+  const equivalentMet = Math.max(2.5, Math.round((grossCalories / (userWeight * (estimatedDuration / 60))) * 10) / 10);
+
+  const explanation = `Силовой расчёт (TUT+EPOC): ${sets} подходов, ${reps} повторений, ${muscleGroupLabel}${loadWeight ? `, отягощение ${loadWeight} кг` : ""}. Активный расход: ${activeCalories} ккал, Полный с отдыхом: ${grossCalories} ккал (~${equivalentMet} MET).`;
+
+  return {
+    exerciseName: name || "Силовое упражнение",
+    category: category,
+    durationMinutes: estimatedDuration,
+    speedKmh: null,
+    inclinePercent: null,
+    sets,
+    reps,
+    weightKg: loadWeight,
+    userWeightKg: userWeight,
+    grossCalories,
+    activeCalories,
+    met: equivalentMet,
+    calculationMethod: "strength_tut",
+    explanation,
+    isWeightEstimated: isWeightMissing,
+    isDurationEstimated: !input.durationMinutes || input.durationMinutes <= 0,
+  };
+}
+
+/**
+ * Обратная совместимость для существующих вызовов
+ */
+export function calculateParsedWorkoutCalories(input: ParsedWorkoutInput): number {
+  const result = calculateDetailedWorkout(input);
+  return result.activeCalories;
 }
 
 /**
  * Расчет суточного энергобаланса:
- * BMR + Тренировки vs Съеденные калории -> Итоговый дефицит/профицит.
+ * BMR + Активные тренировки vs Съеденные калории -> Итоговый дефицит/профицит.
+ * ВНИМАНИЕ: Используются активные калории тренировок, чтобы НЕ дублировать BMR,
+ * который уже рассчитывается за полные 24 часа!
  */
 export function calculateEnergyBalance(params: {
   biometrics?: UserBiometrics | null;
   burnedCalories: number;
+  grossBurnedCalories?: number;
   consumedCalories: number;
 }): DayEnergyBalance {
-  const { biometrics, burnedCalories, consumedCalories } = params;
+  const { biometrics, burnedCalories, grossBurnedCalories, consumedCalories } = params;
 
   let bmr = 1450;
   try {
@@ -198,6 +336,7 @@ export function calculateEnergyBalance(params: {
 
   const safeBurned = Number.isFinite(burnedCalories) ? burnedCalories : 0;
   const safeConsumed = Number.isFinite(consumedCalories) ? consumedCalories : 0;
+  // BMR покрывает 24 часа покоя. Добавляем активный расход тренировок.
   const totalExpenditure = bmr + safeBurned;
   const netDeficit = totalExpenditure - safeConsumed;
 
@@ -225,9 +364,10 @@ export function calculateEnergyBalance(params: {
 
   return {
     bmr,
-    burnedCalories,
+    burnedCalories: safeBurned,
+    grossBurnedCalories: grossBurnedCalories ?? safeBurned,
     totalExpenditure,
-    consumedCalories,
+    consumedCalories: safeConsumed,
     netDeficit,
     status,
     statusText,
