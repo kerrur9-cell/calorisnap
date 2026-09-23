@@ -59,15 +59,18 @@ export function useDayLog(dateKey: string) {
   });
 }
 
+export type MealIconType = "sun" | "utensils" | "moon" | "apple";
+
 export const MEAL_TYPES: {
   value: MealType;
   label: string;
   emoji: string;
+  icon: MealIconType;
 }[] = [
-  { value: "breakfast", label: "Завтрак", emoji: "🌅" },
-  { value: "lunch", label: "Обед", emoji: "🍽️" },
-  { value: "dinner", label: "Ужин", emoji: "🌙" },
-  { value: "snack", label: "Перекус", emoji: "🍎" },
+  { value: "breakfast", label: "Завтрак", emoji: "🌅", icon: "sun" },
+  { value: "lunch", label: "Обед", emoji: "🍽️", icon: "utensils" },
+  { value: "dinner", label: "Ужин", emoji: "🌙", icon: "moon" },
+  { value: "snack", label: "Перекус", emoji: "🍎", icon: "apple" },
 ];
 
 export function mealTypeMeta(type: MealType) {

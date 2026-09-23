@@ -31,7 +31,8 @@ export default async function AppLayout({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  let { data: profile, error } = await getCachedProfile(user.id);
+  const { data: initialProfile, error } = await getCachedProfile(user.id);
+  let profile = initialProfile;
 
   // Если профиль не найден (или ошибка) — пробуем безопасно создать/восстановить
   if (error || !profile) {

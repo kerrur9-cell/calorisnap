@@ -8,7 +8,7 @@ import { useWorkouts } from "@/hooks/useWorkouts";
 import { useProfile } from "@/hooks/useProfile";
 import { CalorieRing } from "@/components/day/CalorieRing";
 import { MacroBar } from "@/components/day/MacroBar";
-import { MealCard } from "@/components/day/MealCard";
+import { MealCard, MealIcon } from "@/components/day/MealCard";
 import { todayKey, addDays } from "@/lib/utils";
 import { FoodAssistantBoundary } from "@/components/day/FoodAssistant";
 import { sumTotals } from "@/lib/nutrition/macros";
@@ -191,7 +191,7 @@ export default function DayPage() {
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {(energyBalance?.netDeficit ?? 0) > 0
-                      ? `Дефицит за сегодня: -${energyBalance?.netDeficit} ккал 🔥`
+                      ? `Дефицит за сегодня: -${energyBalance?.netDeficit} ккал`
                       : (energyBalance?.netDeficit ?? 0) < 0
                         ? `Профицит: +${Math.abs(energyBalance?.netDeficit ?? 0)} ккал`
                         : "Расход и баланс в норме"}
@@ -274,7 +274,7 @@ function MealGroup({
   const totals = sumTotals(meals.flatMap((meal) => meal.meal_items));
 
   return (
-    <div className="glass-card glossy-sheen scroll-sway overflow-hidden rounded-3xl transition-all shadow-md">
+    <div className="glass-card glossy-sheen scroll-sway overflow-hidden rounded-3xl transition-all shadow-sm">
       <div
         role="button"
         tabIndex={0}
@@ -285,26 +285,32 @@ function MealGroup({
             setIsOpen((prev) => !prev);
           }
         }}
-        className="flex w-full cursor-pointer items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-muted/40 select-none"
+        className="flex w-full cursor-pointer items-center justify-between gap-2.5 p-3.5 sm:p-4 text-left transition-colors hover:bg-muted/30 select-none"
         aria-expanded={isOpen}
         aria-label={`${isOpen ? "Свернуть" : "Развернуть"} ${meta.label}`}
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="text-2xl shrink-0">{meta.emoji}</span>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary border border-primary/20 shrink-0">
+            <MealIcon type={mealType} className="h-4.5 w-4.5 stroke-[2]" />
+          </div>
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-foreground">{meta.label}</div>
-            <div className="truncate text-xs text-muted-foreground">
-              {formatDishesCount(meals.length)} · {Math.round(totals.calories)} ккал · Б {Math.round(totals.proteinG)} · Ж {Math.round(totals.fatG)} · У {Math.round(totals.carbsG)}
+            <div className="font-semibold text-sm text-foreground leading-tight">{meta.label}</div>
+            <div className="truncate text-[11px] sm:text-xs text-muted-foreground mt-0.5">
+              {formatDishesCount(meals.length)} · Б {Math.round(totals.proteinG)} · Ж {Math.round(totals.fatG)} · У {Math.round(totals.carbsG)}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <span className="rounded-full bg-primary-soft/90 border border-primary/25 px-2.5 py-0.5 text-xs font-bold text-primary tabular-nums">
+            {Math.round(totals.calories)} ккал
+          </span>
+
           {isToday && (
             <>
               <Link
                 href={{ pathname: "/camera", query: { meal: mealType } }}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-primary spring-press"
+                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-primary spring-press"
                 title="Сфотографировать"
                 aria-label={`Сфотографировать в ${meta.label}`}
               >
@@ -312,7 +318,7 @@ function MealGroup({
               </Link>
               <Link
                 href={{ pathname: "/foods", query: { meal: mealType } }}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-primary spring-press"
+                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-primary spring-press"
                 title="Добавить продукт"
                 aria-label={`Добавить продукт в ${meta.label}`}
               >
@@ -320,15 +326,15 @@ function MealGroup({
               </Link>
             </>
           )}
-          <div className={`p-1.5 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>
-            <ChevronDown className="h-5 w-5" />
+          <div className={`p-1 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>
+            <ChevronDown className="h-4.5 w-4.5" />
           </div>
         </div>
       </div>
 
       {isOpen && (
-        <div className="border-t border-border/40 bg-muted/20 p-3 sm:p-4 space-y-3">
-          <div className="space-y-3">
+        <div className="border-t border-border/40 bg-muted/15 p-3 sm:p-4 space-y-3">
+          <div className="space-y-2.5">
             {meals.map((meal) => (
               <MealCard key={meal.id} meal={meal} dateKey={dateKey} />
             ))}
@@ -340,7 +346,7 @@ function MealGroup({
   );
 }
 
-/** Пустая карточка приёма пищи с действиями добавить */
+/** Пустая карточка приёма пищи с лаконичными действиями добавить */
 function EmptyMeal({
   mealType,
   isToday,
@@ -353,23 +359,28 @@ function EmptyMeal({
     return null;
   }
   return (
-    <div className="glass-card glossy-sheen scroll-sway flex items-center justify-between rounded-3xl border border-dashed border-border/80 bg-card/40 p-4 transition-all shadow-xs">
+    <div className="glass-card glossy-sheen scroll-sway flex items-center justify-between rounded-3xl border border-dashed border-border/70 bg-card/30 p-3 sm:p-3.5 transition-all shadow-2xs hover:border-primary/40">
       <div className="flex items-center gap-2.5 text-muted-foreground">
-        <span className="text-xl">{meta.emoji}</span>
-        <span className="font-semibold text-foreground/80">{meta.label}</span>
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground border border-border/50 shrink-0">
+          <MealIcon type={mealType} className="h-4 w-4 stroke-[1.8]" />
+        </div>
+        <span className="font-semibold text-xs sm:text-sm text-foreground/85">{meta.label}</span>
       </div>
-      <div className="flex gap-2">
+      <div className="flex items-center gap-1.5">
         <Link
           href={{ pathname: "/camera", query: { meal: mealType } }}
-          className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground shadow-xs"
+          className="btn-glossy spring-press flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-2xs"
+          aria-label={`Сфотографировать ${meta.label}`}
         >
-          <Camera className="h-4 w-4" /> Фото
+          <Camera className="h-3.5 w-3.5" /> Фото
         </Link>
         <Link
           href={{ pathname: "/foods", query: { meal: mealType } }}
-          className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-muted/80 border border-border/60 px-3.5 py-1.5 text-sm font-medium hover:bg-muted"
+          className="spring-press flex h-7.5 w-7.5 items-center justify-center rounded-full bg-muted/70 border border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          title={`Добавить ${meta.label} вручную`}
+          aria-label={`Добавить ${meta.label} вручную`}
         >
-          <Plus className="h-4 w-4" /> Вручную
+          <Plus className="h-4 w-4" />
         </Link>
       </div>
     </div>
@@ -383,20 +394,20 @@ function MealAddActions({
 }) {
   const meta = mealTypeMeta(mealType);
   return (
-    <div className="-mt-1 flex justify-end gap-2 pr-1">
+    <div className="flex justify-end gap-2 pt-1 pr-1">
       <Link
         href={{ pathname: "/camera", query: { meal: mealType } }}
-        className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary-soft border border-primary/20 px-3.5 py-1.5 text-sm font-medium text-primary shadow-2xs"
+        className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary-soft border border-primary/20 px-3.5 py-1.5 text-xs font-semibold text-primary shadow-2xs hover:bg-primary hover:text-primary-foreground transition-colors"
         aria-label={`Добавить фото в ${meta.label}`}
       >
-        <Camera className="h-4 w-4" /> Ещё фото
+        <Camera className="h-3.5 w-3.5" /> Ещё фото
       </Link>
       <Link
         href={{ pathname: "/foods", query: { meal: mealType } }}
-        className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-muted/80 border border-border/60 px-3.5 py-1.5 text-sm font-medium hover:bg-muted"
+        className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-muted/70 border border-border/60 px-3.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
         aria-label={`Добавить продукт в ${meta.label}`}
       >
-        <Plus className="h-4 w-4" /> Ещё продукт
+        <Plus className="h-3.5 w-3.5" /> Ещё продукт
       </Link>
     </div>
   );

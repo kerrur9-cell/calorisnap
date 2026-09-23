@@ -448,13 +448,13 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div className="rounded-2xl bg-card p-4 shadow-sm">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`text-2xl font-bold tabular-nums ${accent && value.startsWith("-") ? "text-primary" : ""}`}>
+    <div className="glass-card rounded-2xl p-4 shadow-xs border border-border/60 bg-card/75 backdrop-blur-xl transition-all">
+      <div className="text-xs font-medium text-muted-foreground truncate">{label}</div>
+      <div className={`text-2xl font-extrabold tracking-tight tabular-nums mt-0.5 ${accent && value.startsWith("-") ? "text-primary" : "text-foreground"}`}>
         {value}
       </div>
-      <div className="text-xs text-muted-foreground">{unit}</div>
-      {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
+      <div className="text-[11px] text-muted-foreground mt-0.5">{unit}</div>
+      {hint && <div className="mt-1 text-[10px] text-muted-foreground/80 truncate">{hint}</div>}
     </div>
   );
 }

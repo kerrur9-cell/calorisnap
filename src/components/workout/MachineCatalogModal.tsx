@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Search, X, Plus, Check, Sparkles, Loader2 } from "lucide-react";
+import { Search, X, Plus, Check, Sparkles, Loader2, Dumbbell, Lightbulb } from "lucide-react";
 import { GYM_MACHINES, type GymMachineItem } from "@/lib/workout/machines";
 import { calculateDetailedWorkout } from "@/lib/workout/calculator";
 import type { WorkoutEntry } from "@/lib/workout/types";
@@ -146,14 +146,16 @@ export function MachineCatalogModal({
       <div className="glass-card flex max-h-[90vh] w-full max-w-lg flex-col rounded-t-3xl sm:rounded-3xl border border-border/80 bg-background/95 p-5 shadow-2xl overflow-hidden animate-slide-up">
         {/* Заголовок */}
         <div className="flex items-center justify-between border-b border-border/40 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🏋️‍♀️</span>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary border border-primary/20 shrink-0">
+              <Dumbbell className="h-4.5 w-4.5" />
+            </div>
             <div>
-              <h2 className="font-bold text-foreground text-base sm:text-lg">
-                Каталог тренажеров и упражнений
+              <h2 className="font-bold text-foreground text-base sm:text-lg leading-tight">
+                Каталог тренажеров
               </h2>
               <p className="text-xs text-muted-foreground">
-                Выберите тренажер для автоматического расчёта калорий
+                Выберите тренажер для точного расчёта калорий
               </p>
             </div>
           </div>
@@ -202,8 +204,11 @@ export function MachineCatalogModal({
 
             {/* Подсказка по технике */}
             <div className="rounded-2xl bg-amber-500/10 border border-amber-500/25 p-3 text-xs text-foreground/90">
-              <span className="font-bold text-amber-600 dark:text-amber-400">💡 Совет по технике: </span>
-              {selectedMachine.techniqueTip}
+              <div className="flex items-center gap-1.5 font-bold text-amber-600 dark:text-amber-400 mb-1">
+                <Lightbulb className="h-3.5 w-3.5" />
+                <span>Совет по технике</span>
+              </div>
+              <p className="text-muted-foreground leading-relaxed">{selectedMachine.techniqueTip}</p>
             </div>
 
             {/* Настройка подходов или минут */}
@@ -430,22 +435,22 @@ export function MachineCatalogModal({
                 onClick={() => setSelectedCategory("all")}
               />
               <CategoryPill
-                label="🍑 Ягодицы и бёдра"
+                label="Ягодицы и бёдра"
                 active={selectedCategory === "glutes_legs"}
                 onClick={() => setSelectedCategory("glutes_legs")}
               />
               <CategoryPill
-                label="🏃 Кардио"
+                label="Кардио"
                 active={selectedCategory === "cardio"}
                 onClick={() => setSelectedCategory("cardio")}
               />
               <CategoryPill
-                label="🧘 Спина и осанка"
+                label="Спина и верх"
                 active={selectedCategory === "back_upper"}
                 onClick={() => setSelectedCategory("back_upper")}
               />
               <CategoryPill
-                label="⚡ Пресс"
+                label="Пресс и кор"
                 active={selectedCategory === "abs_core"}
                 onClick={() => setSelectedCategory("abs_core")}
               />

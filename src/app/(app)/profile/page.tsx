@@ -271,8 +271,8 @@ function ProfileFlow() {
       </section>
 
       {/* Тема */}
-      <section className="mb-4 rounded-2xl bg-card p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold">Тема</h2>
+      <section className="glass-card glossy-sheen scroll-sway mb-4 rounded-3xl p-5 shadow-md">
+        <h2 className="mb-3 font-semibold text-foreground">Тема оформления</h2>
         <div className="grid grid-cols-3 gap-2">
           {(
             [
@@ -284,10 +284,10 @@ function ProfileFlow() {
             <button
               key={value}
               onClick={() => changeTheme(value)}
-              className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`rounded-2xl border px-3 py-2.5 text-xs sm:text-sm font-semibold transition-all spring-press ${
                 theme === value
-                  ? "border-primary bg-primary-soft text-primary"
-                  : "border-border text-muted-foreground"
+                  ? "border-primary/40 bg-primary-soft text-primary shadow-2xs"
+                  : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted"
               }`}
             >
               {label}
@@ -297,15 +297,17 @@ function ProfileFlow() {
       </section>
 
       {/* Выход */}
-      <LinkAccount />
-      <button
-        onClick={signOut}
-        disabled={signingOut}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-danger-soft py-3.5 font-medium text-danger"
-      >
-        <LogOut className="h-4 w-4" />
-        {signingOut ? "Выход…" : "Выйти из аккаунта"}
-      </button>
+      <div className="space-y-3">
+        <LinkAccount />
+        <button
+          onClick={signOut}
+          disabled={signingOut}
+          className="spring-press flex w-full items-center justify-center gap-2 rounded-2xl border border-danger/25 bg-danger-soft/80 py-3 text-sm font-semibold text-danger shadow-2xs hover:bg-danger-soft active:scale-[0.98]"
+        >
+          <LogOut className="h-4 w-4" />
+          {signingOut ? "Выход…" : "Выйти из аккаунта"}
+        </button>
+      </div>
     </main>
   );
 }

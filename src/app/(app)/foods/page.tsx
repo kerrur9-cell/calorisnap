@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, Plus, Check, Loader2, X, Sparkles } from "lucide-react";
+import { Search, Plus, Check, Loader2, X, Sparkles, ArrowLeft, SunMedium, Utensils, Moon, Apple } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { macrosForWeight } from "@/lib/nutrition/macros";
 import { todayKey } from "@/lib/utils";
@@ -14,6 +14,13 @@ import { saveMeal } from "@/lib/meals";
 import { resolveMealType, nutritionSchema, weightSchema, foodNameSchema } from "@/lib/validation";
 import { usePersonalFoodGraph } from "@/hooks/usePersonalFoodGraph";
 import { getSmartFoodSuggestions } from "@/lib/nutrition/personalization";
+
+const MEAL_ICONS: Record<MealType, typeof SunMedium> = {
+  breakfast: SunMedium,
+  lunch: Utensils,
+  dinner: Moon,
+  snack: Apple,
+};
 
 export default function FoodsPage() {
   return (
@@ -229,28 +236,37 @@ function FoodsFlow() {
   return (
     <main className="min-h-dvh bg-background px-4 pb-24 pt-6">
       <header className="mb-4 flex items-center justify-between">
-        <Link href="/day" className="text-sm text-muted-foreground">
-          ← Назад
+        <Link
+          href="/day"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-card border border-border/40 text-muted-foreground transition hover:text-foreground active:scale-95"
+          aria-label="Назад в дневник"
+        >
+          <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="text-lg font-bold">Добавить продукт</h1>
-        <div className="w-10" />
+        <h1 className="text-lg font-bold tracking-tight">Добавить продукт</h1>
+        <div className="w-9" />
       </header>
 
       {/* Выбор приёма пищи */}
-      <div className="no-scrollbar mb-4 flex gap-2 overflow-x-auto">
-        {MEAL_TYPES.map((mt) => (
-          <button
-            key={mt.value}
-            onClick={() => setMealType(mt.value)}
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-              mealType === mt.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-card text-muted-foreground"
-            }`}
-          >
-            {mt.emoji} {mt.label}
-          </button>
-        ))}
+      <div className="no-scrollbar mb-4 flex gap-1.5 overflow-x-auto">
+        {MEAL_TYPES.map((mt) => {
+          const Icon = MEAL_ICONS[mt.value];
+          const isActive = mealType === mt.value;
+          return (
+            <button
+              key={mt.value}
+              onClick={() => setMealType(mt.value)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-xs shadow-primary/30"
+                  : "bg-card border border-border/40 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              <span>{mt.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {error && (

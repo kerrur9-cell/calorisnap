@@ -12,6 +12,7 @@ import {
   Plus,
   Trash2,
   Zap,
+  AlertTriangle,
 } from "lucide-react";
 import { useWorkouts } from "@/hooks/useWorkouts";
 import { useDayLog } from "@/hooks/useDayLog";
@@ -92,8 +93,8 @@ export default function BurnPage() {
       {isWeightMissing && (
         <div className="mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs flex items-center justify-between text-amber-700 dark:text-amber-300">
           <div className="flex items-center gap-2">
-            <span className="text-base">⚠️</span>
-            <span>Текущий вес в профиле не указан. Укажите вес для точного физиологического расчёта.</span>
+            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+            <span>Текущий вес в профиле не указан. Укажите вес для точного расчёта.</span>
           </div>
           <Link href="/profile" className="font-bold underline shrink-0 ml-2">
             Указать →
@@ -275,17 +276,19 @@ export default function BurnPage() {
         </div>
 
         {workouts.length === 0 ? (
-          <div className="glass-card flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/80 p-8 text-center bg-card/30">
-            <span className="text-3xl mb-2">🔥</span>
+          <div className="glass-card flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/70 p-8 text-center bg-card/30 shadow-2xs">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/20 mb-3">
+              <Flame className="h-6 w-6 stroke-[1.8]" />
+            </div>
             <div className="font-bold text-sm text-foreground mb-1">
               Нет записанных упражнений
             </div>
             <p className="text-xs text-muted-foreground max-w-xs mb-4">
-              Сделайте тренировку, сфотографируйте тренажер или просто скажите голосом, сколько сделали
+              Сделайте тренировку, сфотографируйте тренажер или продиктуйте голосом
             </p>
             <button
               onClick={() => setShowVoice(true)}
-              className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-xs"
+              className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-xs"
             >
               <Mic className="h-3.5 w-3.5" /> Сказать упражнение
             </button>

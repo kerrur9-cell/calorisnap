@@ -14,6 +14,9 @@ import {
   Star,
   Flame,
   BarChart3,
+  CheckCircle2,
+  Circle,
+  Dumbbell,
 } from "lucide-react";
 import { useGamification } from "@/hooks/useGamification";
 import { useProfile } from "@/hooks/useProfile";
@@ -204,14 +207,14 @@ export default function HubPage() {
         </div>
         <div className="space-y-2.5">
           <ExperimentCard
-            emoji="🥩"
+            icon={Dumbbell}
             title="14 дней белка"
             description="Ежедневно выполняйте норму белка 14 дней подряд"
             progress={gam ? Math.min(14, gam.unlockedBadges.find(b => b.id === "protein_fan")?.unlocked ? 14 : (gam.momentumDays ?? 0)) : 0}
             total={14}
           />
           <ExperimentCard
-            emoji="🎯"
+            icon={Target}
             title="7 дней без переедания"
             description="Оставайтесь в рамках калорийности 7 дней"
             progress={gam ? Math.min(7, gam.unlockedBadges.find(b => b.id === "calorie_master")?.unlocked ? 7 : Math.min(gam.momentumDays, 7)) : 0}
@@ -331,21 +334,31 @@ export default function HubPage() {
 
 function ActionItem({ done, label }: { done: boolean; label: string }) {
   return (
-    <div className={`flex items-center gap-1.5 rounded-xl px-2 py-1.5 ${done ? "bg-success-soft/60 text-success" : "bg-muted/40 text-muted-foreground"}`}>
-      <span className="text-sm">{done ? "✅" : "⬜"}</span>
-      <span className="font-medium">{label}</span>
+    <div
+      className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-xs font-medium transition-all ${
+        done
+          ? "bg-success-soft/70 text-success border border-success/20"
+          : "bg-muted/40 text-muted-foreground border border-border/40"
+      }`}
+    >
+      {done ? (
+        <CheckCircle2 className="h-4 w-4 text-primary shrink-0 stroke-[2.2]" />
+      ) : (
+        <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0 stroke-[1.8]" />
+      )}
+      <span className="truncate">{label}</span>
     </div>
   );
 }
 
 function ExperimentCard({
-  emoji,
+  icon: Icon,
   title,
   description,
   progress,
   total,
 }: {
-  emoji: string;
+  icon: typeof Target;
   title: string;
   description: string;
   progress: number;
@@ -353,21 +366,24 @@ function ExperimentCard({
 }) {
   const pct = total > 0 ? Math.round((progress / total) * 100) : 0;
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-card/50 p-3 transition-all">
-      <span className="text-2xl shrink-0">{emoji}</span>
+    <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-card/50 p-3.5 transition-all">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 border border-violet-500/25 text-violet-400 shrink-0">
+        <Icon className="h-5 w-5 stroke-[2]" />
+      </div>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm text-foreground">{title}</div>
-        <div className="text-[11px] text-muted-foreground mt-0.5">
+        <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
           {description}
         </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted/60">
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted/60">
           <div
             className="h-full rounded-full bg-gradient-to-r from-violet-500/80 to-violet-500 transition-all duration-500"
             style={{ width: `${Math.min(pct, 100)}%` }}
           />
         </div>
-        <div className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">
-          {progress}/{total} дней
+        <div className="mt-1 flex justify-between text-[10px] text-muted-foreground tabular-nums">
+          <span>{pct}% выполнено</span>
+          <span>{progress}/{total} дней</span>
         </div>
       </div>
     </div>

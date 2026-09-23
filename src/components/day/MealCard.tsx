@@ -1,9 +1,9 @@
 "use client";
 
-import type { MealWithItems } from "@/types/database";
+import type { MealWithItems, MealType } from "@/types/database";
 import { mealTypeMeta } from "@/hooks/useDayLog";
 import { sumTotals } from "@/lib/nutrition/macros";
-import { ImageIcon, Trash2, ArrowLeftRight } from "lucide-react";
+import { ImageIcon, Trash2, ArrowLeftRight, SunMedium, Utensils, Moon, Apple } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,9 +17,22 @@ const FoodSwapModal = dynamic(
   { ssr: false }
 );
 
+export function MealIcon({ type, className = "h-4 w-4" }: { type: MealType; className?: string }) {
+  switch (type) {
+    case "breakfast":
+      return <SunMedium className={className} />;
+    case "lunch":
+      return <Utensils className={className} />;
+    case "dinner":
+      return <Moon className={className} />;
+    case "snack":
+    default:
+      return <Apple className={className} />;
+  }
+}
+
 /**
- * Карточка приёма пищи: emoji + список продуктов + сумма по БЖУ.
- * Свайп-удаление реализовано кнопкой (для надёжности и a11y).
+ * Карточка приёма пищи: единый стиль, Lucide иконка, список продуктов и сумма БЖУ.
  */
 export function MealCard({
   meal,
@@ -69,43 +82,62 @@ export function MealCard({
   });
 
   return (
-    <div className="glass-card glossy-sheen scroll-sway rounded-3xl p-4.5 shadow-md transition-all duration-300 animate-blur-reveal">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{meta.emoji}</span>
+    <div className="glass-card glossy-sheen scroll-sway rounded-3xl p-4 shadow-sm transition-all duration-300 animate-blur-reveal">
+      <div className="mb-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-soft text-primary border border-primary/20 shrink-0">
+            <MealIcon type={meal.meal_type} className="h-4 w-4 stroke-[2]" />
+          </div>
           <div>
-            <h3 className="font-semibold">{meta.label}</h3>
-            <span className="text-xs text-muted-foreground">{displayedAt}</span>
+            <h3 className="text-sm font-semibold text-foreground leading-tight">{meta.label}</h3>
+            <span className="text-[11px] text-muted-foreground">{displayedAt}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {meal.photo_storage_path && (
-            <button onClick={showPhoto} className="flex items-center gap-1 text-xs text-muted-foreground">
-              <ImageIcon className="h-3.5 w-3.5" /> фото
+            <button
+              onClick={showPhoto}
+              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
+            >
+              <ImageIcon className="h-3.5 w-3.5 text-primary" /> фото
             </button>
           )}
           <button
             onClick={handleDelete}
             disabled={deleting}
             aria-label="Удалить приём пищи"
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-danger-soft hover:text-danger"
+            className="rounded-lg p-1.5 text-muted-foreground/70 transition-colors hover:bg-danger-soft hover:text-danger active:scale-95"
           >
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      {error && <p role="alert" className="text-danger">{error}</p>}
-      {photoUrl && <Image src={photoUrl} unoptimized width={1280} height={960} alt="Фото приёма пищи" className="mb-3 h-auto w-full rounded-xl" onError={() => { setPhotoUrl(null); setError("Ссылка на фото истекла. Нажмите «фото» ещё раз."); }} />}
-      <ul className="space-y-1.5">
+      {error && <p role="alert" className="text-danger text-xs mb-2">{error}</p>}
+      {photoUrl && (
+        <Image
+          src={photoUrl}
+          unoptimized
+          width={1280}
+          height={960}
+          alt="Фото приёма пищи"
+          className="mb-3 h-auto w-full rounded-2xl border border-border/50 object-cover max-h-60"
+          onError={() => {
+            setPhotoUrl(null);
+            setError("Ссылка на фото истекла. Нажмите «фото» ещё раз.");
+          }}
+        />
+      )}
+
+      <ul className="space-y-1">
         {meal.meal_items.map((item) => {
           const name = item.custom_food_name ?? "Продукт";
           return (
             <li
               key={item.id}
-              className="flex flex-wrap items-center justify-between gap-2 text-sm"
+              className="group flex items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-sm transition-colors hover:bg-muted/30"
             >
-              <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
                 <button
                   onClick={() =>
                     setSwappingItem({
@@ -119,35 +151,38 @@ export function MealCard({
                   }
                   title="Подобрать замену (Food Swap)"
                   aria-label={`Подобрать замену для ${name}`}
-                  className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-primary-soft hover:text-primary"
+                  className="rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-primary-soft hover:text-primary shrink-0"
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5" />
                 </button>
-                <span className="text-foreground truncate">
+                <span className="text-foreground truncate text-xs sm:text-sm font-medium">
                   {name}
                   {item.weight_grams != null && (
-                    <span className="ml-1 text-xs text-muted-foreground">
+                    <span className="ml-1 text-[11px] font-normal text-muted-foreground">
                       · {Math.round(item.weight_grams)} г
                     </span>
                   )}
                 </span>
               </div>
-              <span className="flex shrink-0 items-center gap-3 tabular-nums">
-                <span className="text-xs text-muted-foreground">
+
+              <div className="flex items-center gap-2.5 shrink-0 tabular-nums">
+                <span className="hidden sm:inline-block text-[11px] text-muted-foreground">
                   Б {item.protein_g} · Ж {item.fat_g} · У {item.carbs_g}
                 </span>
-                <span className="w-14 text-right font-semibold">
-                  {Math.round(item.calories)} ккал
+                <span className="text-right text-xs sm:text-sm font-semibold text-foreground">
+                  {Math.round(item.calories)} <span className="text-[10px] font-normal text-muted-foreground">ккал</span>
                 </span>
-              </span>
+              </div>
             </li>
           );
         })}
       </ul>
 
-      <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-sm">
-        <span className="text-muted-foreground">Итого</span>
-        <span className="font-bold tabular-nums">
+      <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2 text-xs">
+        <span className="text-muted-foreground font-medium">
+          Б {Math.round(totals.proteinG)}г · Ж {Math.round(totals.fatG)}г · У {Math.round(totals.carbsG)}г
+        </span>
+        <span className="font-bold tabular-nums text-foreground">
           {Math.round(totals.calories)} ккал
         </span>
       </div>

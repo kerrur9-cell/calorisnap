@@ -194,14 +194,16 @@ export function EquipmentPhotoModal({
       <div className="glass-card flex max-h-[90vh] w-full max-w-lg flex-col rounded-t-3xl sm:rounded-3xl border border-border/80 bg-background/95 p-5 shadow-2xl overflow-y-auto animate-slide-up">
         {/* Заголовок */}
         <div className="flex items-center justify-between border-b border-border/40 pb-3 mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📸</span>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary border border-primary/20 shrink-0">
+              <Camera className="h-4.5 w-4.5" />
+            </div>
             <div>
-              <h2 className="font-bold text-foreground text-base sm:text-lg">
-                Распознать тренажер по фото
+              <h2 className="font-bold text-foreground text-base sm:text-lg leading-tight">
+                Распознать тренажер
               </h2>
               <p className="text-xs text-muted-foreground">
-                Сфотографируйте тренажер в зале, и AI все определит
+                Фото тренажера в зале для автоматического расчёта
               </p>
             </div>
           </div>

@@ -15,6 +15,10 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  Footprints,
+  Activity,
+  Lightbulb,
+  MessageSquareText,
 } from "lucide-react";
 import type { WorkoutEntry } from "@/lib/workout/types";
 import { calculateDetailedWorkout } from "@/lib/workout/calculator";
@@ -106,11 +110,13 @@ export function WorkoutVoiceModal({
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
-  useEffect(() => {
+  const [prevWeightProp, setPrevWeightProp] = useState(initialUserWeightKg);
+  if (initialUserWeightKg !== prevWeightProp) {
+    setPrevWeightProp(initialUserWeightKg);
     if (initialUserWeightKg && initialUserWeightKg > 0) {
       setUserWeight(initialUserWeightKg);
     }
-  }, [initialUserWeightKg]);
+  }
 
   // Инициализация Web Speech API
   useEffect(() => {
@@ -308,14 +314,16 @@ export function WorkoutVoiceModal({
       <div className="glass-card flex max-h-[92vh] w-full max-w-lg flex-col rounded-t-3xl sm:rounded-3xl border border-border/80 bg-background/95 p-5 shadow-2xl overflow-y-auto animate-slide-up">
         {/* Шапка */}
         <div className="flex items-center justify-between border-b border-border/40 pb-3 mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🎙️</span>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary border border-primary/20 shrink-0">
+              <Mic className="h-4.5 w-4.5" />
+            </div>
             <div>
-              <h2 className="font-bold text-foreground text-base sm:text-lg">
+              <h2 className="font-bold text-foreground text-base sm:text-lg leading-tight">
                 ИИ-трекер активности
               </h2>
               <p className="text-xs text-muted-foreground">
-                Распознавание речи + объективный расчёт MET / ACSM
+                Распознавание речи и расчёт по Compendium / ACSM
               </p>
             </div>
           </div>
@@ -471,22 +479,26 @@ export function WorkoutVoiceModal({
 
             {/* Подсказка при неоднозначности (например, 6.7 км/ч: шаг или бег) */}
             {rawAi.isAmbiguous && (
-              <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-2.5 text-xs text-amber-700 dark:text-amber-300">
-                <span>💡 {rawAi.ambiguityNote || "Уточните тип движения для максимальной точности:"}</span>
-                <div className="flex gap-2 mt-1.5">
+              <div className="rounded-2xl bg-amber-500/10 border border-amber-500/25 p-3 text-xs text-amber-700 dark:text-amber-300">
+                <div className="flex items-center gap-1.5 font-semibold mb-2">
+                  <Lightbulb className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  <span>{rawAi.ambiguityNote || "Уточните тип движения для максимальной точности:"}</span>
+                </div>
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       setEditName("Быстрая ходьба на беговой дорожке");
                       setEditCategory("cardio");
                     }}
-                    className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition-all ${
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
                       /ходьб/i.test(editName)
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-foreground"
+                        ? "bg-primary text-primary-foreground shadow-2xs"
+                        : "bg-muted/80 text-foreground hover:bg-muted"
                     }`}
                   >
-                    🚶 Быстрая ходьба (5.8 MET)
+                    <Footprints className="h-3.5 w-3.5 shrink-0" />
+                    <span>Ходьба (5.8 MET)</span>
                   </button>
                   <button
                     type="button"
@@ -494,13 +506,14 @@ export function WorkoutVoiceModal({
                       setEditName("Лёгкий бег трусцой");
                       setEditCategory("cardio");
                     }}
-                    className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition-all ${
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
                       /бег/i.test(editName)
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-foreground"
+                        ? "bg-primary text-primary-foreground shadow-2xs"
+                        : "bg-muted/80 text-foreground hover:bg-muted"
                     }`}
                   >
-                    🏃 Бег трусцой (7.0 MET)
+                    <Activity className="h-3.5 w-3.5 shrink-0" />
+                    <span>Бег трусцой (7.0 MET)</span>
                   </button>
                 </div>
               </div>
@@ -744,10 +757,11 @@ export function WorkoutVoiceModal({
               </div>
             )}
 
-            {/* Нейтральный научный комментарий */}
+            {/* Нейтральный комментарий */}
             {rawAi.commentary && (
-              <div className="rounded-xl bg-background/80 border border-border/60 p-2.5 text-xs text-foreground/90">
-                💬 {rawAi.commentary}
+              <div className="flex items-start gap-2 rounded-2xl bg-muted/30 border border-border/50 p-3 text-xs text-foreground/90">
+                <MessageSquareText className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{rawAi.commentary}</span>
               </div>
             )}
 

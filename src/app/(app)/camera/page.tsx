@@ -11,6 +11,8 @@ import {
   Trash2,
   AlertTriangle,
   Scale,
+  UtensilsCrossed,
+  Lightbulb,
 } from "lucide-react";
 import { CameraCapture } from "@/components/camera/CameraCapture";
 import { ConfidenceBadge } from "@/components/ai/ConfidenceBadge";
@@ -346,9 +348,14 @@ function CaptureStage({
         </div>
       </div>
 
-      <div className="rounded-2xl bg-primary-soft p-4 text-sm text-primary">
-        💡 Совет: поставьте тарелку на весы и сфотографируйте сверху. Если на
-        фото виден дисплей весов — приложение само считает вес!
+      <div className="rounded-2xl bg-primary-soft/80 border border-primary/25 p-4 text-xs sm:text-sm text-foreground/90">
+        <div className="flex items-center gap-1.5 font-bold text-primary mb-1">
+          <Lightbulb className="h-4 w-4" />
+          <span>Совет</span>
+        </div>
+        <p className="text-muted-foreground leading-relaxed">
+          Поставьте тарелку на весы и сфотографируйте сверху. Если на фото виден дисплей весов — приложение само считает вес!
+        </p>
       </div>
     </div>
   );
@@ -374,7 +381,7 @@ function AnalyzingStage({ retrying, attempt }: { retrying: boolean; attempt: "se
     <div className="flex flex-col items-center gap-6 rounded-3xl bg-card p-10 text-center shadow-sm" role="status" aria-live="polite">
       <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-primary-soft">
         <div className="absolute inset-2 rounded-full border-4 border-primary/20 border-t-primary motion-safe:animate-spin" />
-        <span className="animate-pulse-soft text-4xl motion-reduce:animate-none" aria-hidden="true">🍽️</span>
+        <UtensilsCrossed className="h-9 w-9 text-primary animate-pulse stroke-[1.8]" />
       </div>
       <div>
         <p className="text-lg font-semibold">{attempt === "tertiary" ? "Пробуем последний раз…" : retrying ? "Проверяем фото ещё раз…" : "Распознаём еду…"}</p>
@@ -476,9 +483,12 @@ function ResultStage({
 
       {/* Предупреждения */}
       {result.warnings.length > 0 && (
-        <div className="space-y-1 rounded-2xl bg-warning-soft p-4 text-xs text-warning">
+        <div className="space-y-1.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 p-3.5 text-xs text-amber-700 dark:text-amber-300">
           {result.warnings.map((w, i) => (
-            <p key={i}>⚠️ {w}</p>
+            <p key={i} className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+              <span>{w}</span>
+            </p>
           ))}
         </div>
       )}

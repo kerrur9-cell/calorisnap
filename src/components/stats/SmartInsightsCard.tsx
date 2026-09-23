@@ -1,6 +1,6 @@
 "use client";
 
-import { Droplets, Activity, Flame, ShieldAlert, Sparkles } from "lucide-react";
+import { Droplets, Activity, Flame, ShieldAlert, Sparkles, Lightbulb, Target } from "lucide-react";
 import {
   evaluateSmartProgressInsights,
   type WeightRecord,
@@ -40,8 +40,9 @@ export function SmartInsightsCard({ weights, nutritionHistory }: SmartInsightsCa
             {insights.waterRetention.message}
           </p>
           {insights.waterRetention.recommendation && (
-            <p className="mt-1 font-medium text-foreground">
-              💡 {insights.waterRetention.recommendation}
+            <p className="mt-1.5 flex items-start gap-1.5 font-medium text-foreground">
+              <Lightbulb className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+              <span>{insights.waterRetention.recommendation}</span>
             </p>
           )}
         </div>
@@ -57,14 +58,15 @@ export function SmartInsightsCard({ weights, nutritionHistory }: SmartInsightsCa
           <p className="mt-1.5 leading-relaxed text-muted-foreground">
             {insights.plateau.message}
           </p>
-          <div className="mt-2 rounded-lg bg-background/80 p-2 text-foreground font-medium">
+          <div className="mt-2 rounded-lg bg-background/80 p-2.5 text-foreground font-medium flex items-start gap-1.5">
+            <Target className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             {insights.plateau.actionRecommendation === "refeed" ? (
               <span>
-                🎯 <strong>Рекомендация: Рефид (Diet Break)</strong> на 2 дня — увеличьте калории до нормы поддержания (TDEE) за счёт сложных углеводов. Это нормализует лептин и разблокирует дальнейший сброс.
+                <strong>Рекомендация: Рефид (Diet Break)</strong> на 2 дня — увеличьте калории до нормы поддержания (TDEE) за счёт сложных углеводов. Это нормализует лептин и разблокирует дальнейший сброс.
               </span>
             ) : (
               <span>
-                🎯 <strong>Рекомендация:</strong> Пересчитайте TDEE в калькуляторе с учётом нового снизившегося веса.
+                <strong>Рекомендация:</strong> Пересчитайте TDEE в калькуляторе с учётом нового снизившегося веса.
               </span>
             )}
           </div>
