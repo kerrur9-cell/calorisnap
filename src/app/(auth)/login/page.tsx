@@ -156,12 +156,15 @@ export default function LoginPage() {
             {/* Guest */}
             <button
               onClick={signInAsGuest}
-              disabled={loading || (captchaRequired && !captchaToken) || (process.env.NODE_ENV === "production" && !captchaRequired)}
-              className="w-full rounded-2xl py-3.5 font-medium text-primary transition-colors hover:bg-primary-soft"
+              disabled={loading || (captchaRequired && !captchaToken)}
+              className="w-full rounded-2xl py-3.5 font-medium text-primary transition-colors hover:bg-primary-soft disabled:opacity-50"
             >
-              Продолжить как гость
+              {loading ? (
+                <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+              ) : (
+                "Продолжить как гость"
+              )}
             </button>
-            {process.env.NODE_ENV === "production" && !captchaRequired && <p className="text-center text-xs text-muted-foreground">Гостевой вход временно недоступен. Используйте Google или email.</p>}
           </div>
         ) : (
           <form onSubmit={signInWithEmail} className="space-y-3">

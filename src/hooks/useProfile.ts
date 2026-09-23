@@ -19,6 +19,20 @@ export function useProfile(initialProfile?: Profile) {
         .from("profiles")
         .select("*")
         .single();
+      if (!error && data) return data as Profile;
+
+      // Если профиль ещё не создан (например, гостевой вход до срабатывания триггера)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: created, error: upsertError } = await supabase
+          .from("profiles")
+          .upsert({ id: user.id }, { onConflict: "id" })
+          .select("*")
+          .single();
+        if (created) return created as Profile;
+        if (upsertError) throw upsertError;
+      }
+
       if (error) throw error;
       return data as Profile;
     },
