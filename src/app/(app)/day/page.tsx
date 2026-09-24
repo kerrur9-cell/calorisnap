@@ -16,6 +16,7 @@ import type { MealType, MealWithItems } from "@/types/database";
 import { useSmartAlerts } from "@/hooks/useSmartAlerts";
 import { SmartAlertBanner } from "@/components/day/SmartAlertBanner";
 import { DailyBriefingCard } from "@/components/day/DailyBriefingCard";
+import { useFriendView } from "@/context/FriendViewContext";
 import dynamic from "next/dynamic";
 
 const MacroBalancer = dynamic(
@@ -33,6 +34,7 @@ const FoodAssistant = dynamic(
  * Кольцо калорий → БЖУ → приёмы пищи → быстрые виджеты.
  */
 export default function DayPage() {
+  const { isGuestView, viewedFriend } = useFriendView();
   const [dateKey, setDateKey] = useState(todayKey());
   const [showAssistant, setShowAssistant] = useState(false);
   const [showBalancer, setShowBalancer] = useState(false);
@@ -102,13 +104,13 @@ export default function DayPage() {
           consumedTotals={day?.totals ?? { calories: 0, proteinG: 0, fatG: 0, carbsG: 0 }}
           calorieGoal={targetCalories}
           macroTargets={macroTargets}
-          userName={profile?.display_name}
+          userName={isGuestView ? (viewedFriend?.displayName ?? profile?.display_name) : profile?.display_name}
         />
       </div>
 
       {/* Умные контекстные предупреждения */}
       <SmartAlertBanner
-        alert={activeAlert}
+        alert={isGuestView ? null : activeAlert}
         onDismiss={dismissAlert}
         onAction={() => setShowBalancer(true)}
       />
@@ -124,7 +126,7 @@ export default function DayPage() {
           {/* Кольцо калорий */}
           <section className="mb-4 flex flex-col items-center">
             <CalorieRing current={day?.totals.calories ?? 0} target={targetCalories} />
-            {isToday && (
+            {isToday && !isGuestView && (
               <button
                 onClick={() => setShowAssistant(true)}
                 className="btn-glossy spring-press mt-3 flex items-center gap-2 rounded-full bg-primary-soft/95 border border-primary/30 px-4.5 py-2 text-sm font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"
@@ -132,7 +134,7 @@ export default function DayPage() {
                 <Sparkles className="h-4 w-4" /> Спросить, что можно съесть
               </button>
             )}
-            {isToday && showAssistant && <FoodAssistantBoundary><FoodAssistant onClose={() => setShowAssistant(false)} /></FoodAssistantBoundary>}
+            {isToday && !isGuestView && showAssistant && <FoodAssistantBoundary><FoodAssistant onClose={() => setShowAssistant(false)} /></FoodAssistantBoundary>}
             <Link href="/calculator" className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline"><Calculator className="h-3.5 w-3.5" /> Калькулятор калорий</Link>
           </section>
 
@@ -199,9 +201,15 @@ export default function DayPage() {
                 </div>
               </div>
 
-              <span className="rounded-full bg-orange-500/15 border border-orange-500/30 px-3 py-1.5 text-xs font-bold text-orange-600 dark:text-orange-400 shrink-0">
-                Записать →
-              </span>
+              {isGuestView ? (
+                <span className="rounded-full bg-muted/60 border border-border/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground shrink-0">
+                  Просмотр →
+                </span>
+              ) : (
+                <span className="rounded-full bg-orange-500/15 border border-orange-500/30 px-3 py-1.5 text-xs font-bold text-orange-600 dark:text-orange-400 shrink-0">
+                  Записать →
+                </span>
+              )}
             </Link>
           </section>
 
@@ -270,6 +278,7 @@ function MealGroup({
   isToday: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { isGuestView } = useFriendView();
   const meta = mealTypeMeta(mealType);
   const totals = sumTotals(meals.flatMap((meal) => meal.meal_items));
 
@@ -306,7 +315,7 @@ function MealGroup({
             {Math.round(totals.calories)} ккал
           </span>
 
-          {isToday && (
+          {isToday && !isGuestView && (
             <>
               <Link
                 href={{ pathname: "/camera", query: { meal: mealType } }}
@@ -339,7 +348,7 @@ function MealGroup({
               <MealCard key={meal.id} meal={meal} dateKey={dateKey} />
             ))}
           </div>
-          {isToday && <MealAddActions mealType={mealType} />}
+          {isToday && !isGuestView && <MealAddActions mealType={mealType} />}
         </div>
       )}
     </div>
@@ -354,8 +363,9 @@ function EmptyMeal({
   mealType: (typeof MEAL_TYPES)[number]["value"];
   isToday: boolean;
 }) {
+  const { isGuestView } = useFriendView();
   const meta = mealTypeMeta(mealType);
-  if (!isToday) {
+  if (!isToday && !isGuestView) {
     return null;
   }
   return (
@@ -366,23 +376,27 @@ function EmptyMeal({
         </div>
         <span className="font-semibold text-xs sm:text-sm text-foreground/85">{meta.label}</span>
       </div>
-      <div className="flex items-center gap-1.5">
-        <Link
-          href={{ pathname: "/camera", query: { meal: mealType } }}
-          className="btn-glossy spring-press flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-2xs"
-          aria-label={`Сфотографировать ${meta.label}`}
-        >
-          <Camera className="h-3.5 w-3.5" /> Фото
-        </Link>
-        <Link
-          href={{ pathname: "/foods", query: { meal: mealType } }}
-          className="spring-press flex h-7.5 w-7.5 items-center justify-center rounded-full bg-muted/70 border border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          title={`Добавить ${meta.label} вручную`}
-          aria-label={`Добавить ${meta.label} вручную`}
-        >
-          <Plus className="h-4 w-4" />
-        </Link>
-      </div>
+      {isGuestView ? (
+        <span className="text-xs text-muted-foreground italic px-2">Нет записей</span>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <Link
+            href={{ pathname: "/camera", query: { meal: mealType } }}
+            className="btn-glossy spring-press flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-2xs"
+            aria-label={`Сфотографировать ${meta.label}`}
+          >
+            <Camera className="h-3.5 w-3.5" /> Фото
+          </Link>
+          <Link
+            href={{ pathname: "/foods", query: { meal: mealType } }}
+            className="spring-press flex h-7.5 w-7.5 items-center justify-center rounded-full bg-muted/70 border border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title={`Добавить ${meta.label} вручную`}
+            aria-label={`Добавить ${meta.label} вручную`}
+          >
+            <Plus className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

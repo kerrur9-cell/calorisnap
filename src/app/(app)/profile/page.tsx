@@ -3,9 +3,11 @@
 import { Suspense, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, LogOut, Plus, Scale, TrendingDown, TrendingUp, Minus, Check } from "lucide-react";
+import { Loader2, LogOut, Plus, Scale, TrendingDown, TrendingUp, Minus, Check, ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
+import { useFriendView } from "@/context/FriendViewContext";
+import { FriendsSection } from "@/components/friends/FriendsSection";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { calculateTdee } from "@/lib/nutrition/tdee";
 import { ageFromBirthDate, ACTIVITY_LABELS, GOAL_LABELS } from "@/lib/nutrition/tdee";
@@ -28,6 +30,7 @@ type Theme = "auto" | "light" | "dark";
 function ProfileFlow() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isGuestView, viewedFriend, exitGuestView } = useFriendView();
   const { data: profile, isLoading, error: profileError } = useProfile();
   const [error, setError] = useState<string | null>(null);
   const [weightInput, setWeightInput] = useState("");
@@ -37,12 +40,21 @@ function ProfileFlow() {
 
   // Последние записи веса
   const { data: weightHistory } = useQuery({
-    queryKey: ["weight-history"],
+    queryKey: ["weight-history", isGuestView ? (viewedFriend?.id ?? "friend") : "self"],
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase
+      let query = supabase
         .from("weight_entries")
-        .select("weight_kg, recorded_at")
+        .select("weight_kg, recorded_at");
+
+      if (isGuestView && viewedFriend?.id) {
+        query = query.eq("user_id", viewedFriend.id);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) query = query.eq("user_id", user.id);
+      }
+
+      const { data, error } = await query
         .order("recorded_at", { ascending: false })
         .limit(7);
       if (error) throw error;
@@ -147,7 +159,39 @@ function ProfileFlow() {
 
   return (
     <main className="min-h-dvh bg-background px-4 pb-24 pt-8">
-      <h1 className="mb-6 text-2xl font-bold">Профиль</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">
+          {isGuestView ? "Профиль друга" : "Профиль"}
+        </h1>
+        {isGuestView && (
+          <button
+            onClick={exitGuestView}
+            className="btn-glossy spring-press flex items-center gap-1 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-2xs"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Вернуться к себе
+          </button>
+        )}
+      </div>
+
+      {isGuestView && (
+        <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-warning/15 border border-warning/30 p-3.5 text-xs text-warning shadow-xs">
+          <div>
+            <div className="font-bold">Режим гостевого просмотра</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              Вы просматриваете профиль <b>{viewedFriend?.displayName}</b>. Доступен только просмотр.
+            </div>
+          </div>
+          <button
+            onClick={exitGuestView}
+            className="btn-glossy spring-press flex items-center gap-1 rounded-xl bg-primary px-3 py-1.5 font-semibold text-primary-foreground shadow-2xs shrink-0"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Вернуться
+          </button>
+        </div>
+      )}
+
       {error && <p role="alert" className="mb-4 text-danger">{error}</p>}
 
       {/* Шапка */}
@@ -173,56 +217,60 @@ function ProfileFlow() {
 
       {/* Нормы */}
       <section className="glass-card glossy-sheen scroll-sway-reverse mb-4 rounded-3xl p-5 shadow-md">
-        <h2 className="mb-3 font-semibold text-foreground">Ваши нормы</h2>
+        <h2 className="mb-3 font-semibold text-foreground">
+          {isGuestView ? "Нормы пользователя" : "Ваши нормы"}
+        </h2>
         <div className="space-y-2 text-sm">
           <Row label="Цель по калориям" value={`${profile.daily_calorie_target ?? "—"} ккал`} />
           <Row label="TDEE" value={tdee ? `${tdee} ккал` : "—"} />
           <Row label="Белки / Жиры / Углеводы" value={`${profile.daily_protein_g ?? "—"} / ${profile.daily_fat_g ?? "—"} / ${profile.daily_carbs_g ?? "—"} г`} />
           <Row label="Активность" value={profile.activity_level ? ACTIVITY_LABELS[profile.activity_level] : "—"} />
-
-
         </div>
-        <Link
-          href="/onboarding"
-          className="btn-glossy spring-press mt-4 block rounded-2xl bg-primary-soft border border-primary/20 py-2.5 text-center text-sm font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"
-        >
-          Изменить данные и пересчитать нормы
-        </Link>
+        {!isGuestView && (
+          <Link
+            href="/onboarding"
+            className="btn-glossy spring-press mt-4 block rounded-2xl bg-primary-soft border border-primary/20 py-2.5 text-center text-sm font-semibold text-primary shadow-xs hover:bg-primary hover:text-primary-foreground"
+          >
+            Изменить данные и пересчитать нормы
+          </Link>
+        )}
       </section>
 
-      {/* Новый вес */}
+      {/* Вес */}
       <section className="glass-card glossy-sheen scroll-sway mb-4 rounded-3xl p-5 shadow-md">
         <h2 className="mb-3 flex items-center gap-2 font-semibold text-foreground">
-          <Scale className="h-4 w-4 text-primary" /> Вес тела
+          <Scale className="h-4 w-4 text-primary" /> {isGuestView ? "История веса" : "Вес тела"}
         </h2>
-        <div className="flex gap-2">
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="Например, 79.5"
-            value={weightInput}
-            onChange={(e) => setWeightInput(e.target.value)}
-            className="flex-1 rounded-2xl border border-border bg-background/80 px-3.5 py-2.5 tabular-nums outline-none focus:border-primary shadow-2xs"
-          />
-          <span className="flex items-center text-sm text-muted-foreground font-medium">кг</span>
-          <button
-            onClick={addWeight}
-            disabled={savingWeight}
-            className="btn-glossy spring-press rounded-2xl bg-primary px-4 text-primary-foreground shadow-xs"
-          >
-            {weightSaved ? (
-              <Check className="h-5 w-5 text-primary-foreground" />
-            ) : (
-              <Plus
-                className={`h-5 w-5 text-primary-foreground ${
-                  savingWeight ? "animate-spin" : ""
-                }`}
-              />
-            )}
-          </button>
-        </div>
+        {!isGuestView && (
+          <div className="flex gap-2">
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="Например, 79.5"
+              value={weightInput}
+              onChange={(e) => setWeightInput(e.target.value)}
+              className="flex-1 rounded-2xl border border-border bg-background/80 px-3.5 py-2.5 tabular-nums outline-none focus:border-primary shadow-2xs"
+            />
+            <span className="flex items-center text-sm text-muted-foreground font-medium">кг</span>
+            <button
+              onClick={addWeight}
+              disabled={savingWeight}
+              className="btn-glossy spring-press rounded-2xl bg-primary px-4 text-primary-foreground shadow-xs"
+            >
+              {weightSaved ? (
+                <Check className="h-5 w-5 text-primary-foreground" />
+              ) : (
+                <Plus
+                  className={`h-5 w-5 text-primary-foreground ${
+                    savingWeight ? "animate-spin" : ""
+                  }`}
+                />
+              )}
+            </button>
+          </div>
+        )}
 
-        {weightSaved && (
+        {!isGuestView && weightSaved && (
           <div className="mt-3 flex items-center gap-2 rounded-xl bg-primary-soft p-3 text-sm text-primary animate-in fade-in slide-in-from-top-2">
             <Check className="h-4 w-4 shrink-0" />
             Сохранено: вес и нормы обновлены
@@ -231,7 +279,7 @@ function ProfileFlow() {
 
         {/* Последние записи */}
         {weightHistory && weightHistory.length > 0 && (
-          <div className="mt-4">
+          <div className={cn(!isGuestView && "mt-4")}>
             <div className="no-scrollbar flex gap-2 overflow-x-auto">
               {weightHistory.map((w, i) => {
                 const prev = weightHistory[i + 1]?.weight_kg;
@@ -270,44 +318,59 @@ function ProfileFlow() {
         </Link>
       </section>
 
-      {/* Тема */}
-      <section className="glass-card glossy-sheen scroll-sway mb-4 rounded-3xl p-5 shadow-md">
-        <h2 className="mb-3 font-semibold text-foreground">Тема оформления</h2>
-        <div className="grid grid-cols-3 gap-2">
-          {(
-            [
-              ["auto", "Авто"],
-              ["light", "Светлая"],
-              ["dark", "Тёмная"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => changeTheme(value)}
-              className={`rounded-2xl border px-3 py-2.5 text-xs sm:text-sm font-semibold transition-all spring-press ${
-                theme === value
-                  ? "border-primary/40 bg-primary-soft text-primary shadow-2xs"
-                  : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* Друзья и гостевой доступ (только для владельца) */}
+      {!isGuestView && <FriendsSection />}
 
-      {/* Выход */}
-      <div className="space-y-3">
-        <LinkAccount />
+      {/* Тема (только для владельца) */}
+      {!isGuestView && (
+        <section className="glass-card glossy-sheen scroll-sway mb-4 rounded-3xl p-5 shadow-md">
+          <h2 className="mb-3 font-semibold text-foreground">Тема оформления</h2>
+          <div className="grid grid-cols-3 gap-2">
+            {(
+              [
+                ["auto", "Авто"],
+                ["light", "Светлая"],
+                ["dark", "Тёмная"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => changeTheme(value)}
+                className={`rounded-2xl border px-3 py-2.5 text-xs sm:text-sm font-semibold transition-all spring-press ${
+                  theme === value
+                    ? "border-primary/40 bg-primary-soft text-primary shadow-2xs"
+                    : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Выход / возврат */}
+      {isGuestView ? (
         <button
-          onClick={signOut}
-          disabled={signingOut}
-          className="spring-press flex w-full items-center justify-center gap-2 rounded-2xl border border-danger/25 bg-danger-soft/80 py-3 text-sm font-semibold text-danger shadow-2xs hover:bg-danger-soft active:scale-[0.98]"
+          onClick={exitGuestView}
+          className="spring-press flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-xs"
         >
-          <LogOut className="h-4 w-4" />
-          {signingOut ? "Выход…" : "Выйти из аккаунта"}
+          <ArrowLeft className="h-4 w-4" />
+          Вернуться к своему профилю
         </button>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          <LinkAccount />
+          <button
+            onClick={signOut}
+            disabled={signingOut}
+            className="spring-press flex w-full items-center justify-center gap-2 rounded-2xl border border-danger/25 bg-danger-soft/80 py-3 text-sm font-semibold text-danger shadow-2xs hover:bg-danger-soft active:scale-[0.98]"
+          >
+            <LogOut className="h-4 w-4" />
+            {signingOut ? "Выход…" : "Выйти из аккаунта"}
+          </button>
+        </div>
+      )}
     </main>
   );
 }

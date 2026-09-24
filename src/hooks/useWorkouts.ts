@@ -6,11 +6,16 @@ import { calculateEnergyBalance, type UserBiometrics } from "@/lib/workout/calcu
 import { useProfile } from "./useProfile";
 import { ageFromBirthDate } from "@/lib/nutrition/tdee";
 import { createClient } from "@/lib/supabase/client";
+import { useFriendView } from "@/context/FriendViewContext";
 
 const STORAGE_PREFIX = "calorisnap_workouts_";
 
-export function useWorkouts(dateKey: string, consumedCalories = 0) {
-  const { data: profile } = useProfile();
+export function useWorkouts(dateKey: string, consumedCalories = 0, overrideUserId?: string | null) {
+  const { targetUserId, isGuestView } = useFriendView();
+  const effectiveUserId = overrideUserId !== undefined ? overrideUserId : targetUserId;
+  const isGuest = isGuestView || (effectiveUserId != null);
+
+  const { data: profile } = useProfile(undefined, effectiveUserId);
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -34,33 +39,50 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
     let active = true;
 
     async function loadData() {
-      // 1. Быстро читаем из localStorage
-      let localItems: WorkoutEntry[] = [];
-      try {
-        const stored = typeof window !== "undefined" ? localStorage.getItem(`${STORAGE_PREFIX}${dateKey}`) : null;
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            localItems = parsed;
+      // 1. Для владельца быстро читаем из localStorage
+      if (!isGuest) {
+        let localItems: WorkoutEntry[] = [];
+        try {
+          const stored = typeof window !== "undefined" ? localStorage.getItem(`${STORAGE_PREFIX}${dateKey}`) : null;
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              localItems = parsed;
+            }
           }
+        } catch {
+          // Игнорируем ошибки парсинга
         }
-      } catch {
-        // Игнорируем ошибки парсинга
+
+        if (active) {
+          setWorkouts(localItems);
+          setIsLoaded(true);
+        }
+      } else {
+        if (active) {
+          setWorkouts([]);
+          setIsLoaded(false);
+        }
       }
 
-      if (active) {
-        setWorkouts(localItems);
-        setIsLoaded(true);
-      }
-
-      // 2. Фоново пробуем синхронизировать из Supabase, если таблица существует
+      // 2. Фоново пробуем синхронизировать из Supabase
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
+        let query = supabase
           .from("workout_entries")
           .select("*")
-          .eq("entry_date", dateKey)
-          .order("created_at", { ascending: false });
+          .eq("entry_date", dateKey);
+
+        if (effectiveUserId) {
+          query = query.eq("user_id", effectiveUserId);
+        } else {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            query = query.eq("user_id", user.id);
+          }
+        }
+
+        const { data, error } = await query.order("created_at", { ascending: false });
 
         if (!error && data && active) {
           // Маппинг из snake_case Supabase в WorkoutEntry
@@ -89,13 +111,16 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
             createdAt: String(row.created_at ?? new Date().toISOString()),
           }));
 
-          if (dbWorkouts.length > 0) {
-            setWorkouts(dbWorkouts);
+          setWorkouts(dbWorkouts);
+          setIsLoaded(true);
+          if (!isGuest && dbWorkouts.length > 0) {
             localStorage.setItem(`${STORAGE_PREFIX}${dateKey}`, JSON.stringify(dbWorkouts));
           }
         }
       } catch {
-        // Оффлайн или отсутствие таблицы в Supabase — безопасно остаемся на localStorage
+        // Оффлайн или отсутствие таблицы в Supabase
+      } finally {
+        if (active) setIsLoaded(true);
       }
     }
 
@@ -103,11 +128,16 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
     return () => {
       active = false;
     };
-  }, [dateKey]);
+  }, [dateKey, effectiveUserId, isGuest]);
 
   // Сохранение записи
   const addWorkout = useCallback(
     async (workout: Omit<WorkoutEntry, "id" | "createdAt" | "entryDate">) => {
+      if (isGuest) {
+        console.warn("Добавление тренировок недоступно в режиме просмотра");
+        return null;
+      }
+
       const newEntry: WorkoutEntry = {
         ...workout,
         id: "w_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
@@ -159,12 +189,17 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
 
       return newEntry;
     },
-    [dateKey],
+    [dateKey, isGuest],
   );
 
   // Удаление записи
   const deleteWorkout = useCallback(
     async (id: string) => {
+      if (isGuest) {
+        console.warn("Удаление тренировок недоступно в режиме просмотра");
+        return;
+      }
+
       setWorkouts((prev) => {
         const updated = prev.filter((w) => w.id !== id);
         try {
@@ -182,7 +217,7 @@ export function useWorkouts(dateKey: string, consumedCalories = 0) {
         // ignore
       }
     },
-    [dateKey],
+    [dateKey, isGuest],
   );
 
   // Суммарные активные сожженные калории за день (идут в суточный дефицит)

@@ -31,34 +31,73 @@ function nutrition(product: Product) {
 }
 
 export async function searchOpenFoodFacts(query: string) {
-  const url = new URL("https://world.openfoodfacts.org/cgi/search.pl");
-  for (const [key, value] of Object.entries({
-    search_terms: query,
-    search_simple: "1",
-    action: "process",
-    json: "1",
-    page_size: "50",
-    fields: "code,product_name,product_name_ru,brands,nutriments",
-  })) url.searchParams.set(key, value);
-  const response = await fetch(url, {
-    headers: { "User-Agent": "CaloriSnap/0.1.0 (https://calorisnap-ai.netlify.app)" },
-    next: { revalidate: 300 },
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!response.ok) throw new Error("Open Food Facts временно недоступен");
-  if (!(response.headers.get("content-type") ?? "").includes("json")) throw new Error("Open Food Facts вернул неверный ответ");
-  const body = await response.json();
-  if (!Array.isArray(body.products)) throw new Error("Open Food Facts вернул неверный ответ");
-  return (body.products as Product[]).flatMap((product) => {
-    const name = (product.product_name_ru || product.product_name || "").trim();
-    const macros = nutrition(product);
-    if (!name || !macros || !/^\d{8,14}$/.test(product.code ?? "")) return [];
-    const brand = product.brands?.split(",")[0]?.trim();
-    return [{
-      id: `off:${product.code}`,
-      name: brand && !name.toLowerCase().includes(brand.toLowerCase()) ? `${name} · ${brand}` : name,
-      name_local: null,
-      ...macros,
-    }];
-  }).slice(0, 30);
+  const cleanQuery = query.trim();
+  if (cleanQuery.length < 2) return [];
+
+  const endpoints = [
+    "https://world.openfoodfacts.org/cgi/search.pl",
+    "https://ru.openfoodfacts.org/cgi/search.pl",
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const base of endpoints) {
+    try {
+      const url = new URL(base);
+      for (const [key, value] of Object.entries({
+        search_terms: cleanQuery,
+        search_simple: "1",
+        action: "process",
+        json: "1",
+        page_size: "30",
+        fields: "code,product_name,product_name_ru,brands,nutriments",
+      })) {
+        url.searchParams.set(key, value);
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "CaloriSnap - WebApp - Version 0.1.0 (https://calorisnap-ai.netlify.app)",
+          Accept: "application/json",
+        },
+        next: { revalidate: 300 },
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (!response.ok) {
+        lastError = new Error(`Open Food Facts статус ${response.status}`);
+        continue;
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("json")) {
+        lastError = new Error("Open Food Facts вернул неверный формат ответа");
+        continue;
+      }
+
+      const body = await response.json();
+      if (!Array.isArray(body?.products)) {
+        return [];
+      }
+
+      const items = (body.products as Product[]).flatMap((product) => {
+        const name = (product.product_name_ru || product.product_name || "").trim();
+        const macros = nutrition(product);
+        if (!name || !macros || !/^\d{8,14}$/.test(product.code ?? "")) return [];
+        const brand = product.brands?.split(",")[0]?.trim();
+        return [{
+          id: `off:${product.code}`,
+          name: brand && !name.toLowerCase().includes(brand.toLowerCase()) ? `${name} · ${brand}` : name,
+          name_local: null,
+          ...macros,
+        }];
+      });
+
+      return items.slice(0, 30);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error("Ошибка соединения");
+    }
+  }
+
+  throw lastError ?? new Error("Open Food Facts временно недоступен");
 }

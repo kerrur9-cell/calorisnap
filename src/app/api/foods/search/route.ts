@@ -30,7 +30,43 @@ async function search(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ items: data as Partial<FoodItem>[] }, { headers: { "Cache-Control": "private, no-store" } });
+  const queryLower = search.toLowerCase();
+  const rawItems = (data ?? []) as Partial<FoodItem>[];
+
+  // Ранжирование: точные совпадения и совпадения с начала слова всегда выше
+  const sortedItems = rawItems.sort((a, b) => {
+    const rankA = getMatchRank(a, queryLower);
+    const rankB = getMatchRank(b, queryLower);
+    if (rankA !== rankB) return rankA - rankB;
+    if (Boolean(b.is_verified) !== Boolean(a.is_verified)) {
+      return (b.is_verified ? 1 : 0) - (a.is_verified ? 1 : 0);
+    }
+    return (a.name_local || a.name || "").localeCompare(b.name_local || b.name || "");
+  });
+
+  return NextResponse.json({ items: sortedItems }, { headers: { "Cache-Control": "private, no-store" } });
+}
+
+function getMatchRank(item: Partial<FoodItem>, queryLower: string): number {
+  const name = (item.name ?? "").toLowerCase();
+  const nameLocal = (item.name_local ?? "").toLowerCase();
+
+  // 0. Точное совпадение строки
+  if (nameLocal === queryLower || name === queryLower) return 0;
+
+  // 1. Начинается с запроса
+  if (nameLocal.startsWith(queryLower) || name.startsWith(queryLower)) return 1;
+
+  // 2. Одно из слов начинается с запроса
+  const wordsLocal = nameLocal.split(/[\s,·\-/]+/);
+  const words = name.split(/[\s,·\-/]+/);
+  if (wordsLocal.some((w) => w.startsWith(queryLower)) || words.some((w) => w.startsWith(queryLower))) return 2;
+
+  // 3. Содержит подстроку
+  if (nameLocal.includes(queryLower) || name.includes(queryLower)) return 3;
+
+  // 4. Нечёткое совпадение (опечатка)
+  return 4;
 }
 
 export async function GET(request: NextRequest) {

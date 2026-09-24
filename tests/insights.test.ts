@@ -21,7 +21,7 @@ describe("Smart Progress Insights", () => {
     const result = analyzeWaterRetention(weights, nutrition);
     expect(result.detected).toBe(true);
     expect(result.weightDeltaKg).toBe(0.9);
-    expect(result.message).toContain("задержка воды и гликогена");
+    expect(result.message).toContain("задержка жидкости и гликогена");
   });
 
   it("does not trigger water retention on small, normal daily fluctuations", () => {

@@ -37,6 +37,7 @@ export interface WeightForecastResult {
   targetDailyDeficit: number;
   actualWeeklyChangeKg: number;
   targetWeeklyChangeKg: number;
+  hasSufficientActualData: boolean;
   estimatedTargetDate: string | null;
   isRateRealistic: boolean;
   message: string;
@@ -107,22 +108,51 @@ export function calculateWeightForecast(params: {
   const currentWeight = latestTrendPoint?.actualWeight ?? null;
   const currentTrendWeight = latestTrendPoint?.trendWeight ?? null;
 
-  // Анализ фактического питания за последние дни с ненулевыми записями
-  const activeCalorieDays = calorieHistory.filter((c) => c.calories > 0);
-  const actualAvgCalories =
-    activeCalorieDays.length > 0
-      ? Math.round(activeCalorieDays.reduce((acc, c) => acc + c.calories, 0) / activeCalorieDays.length)
-      : targetCalories;
+  // Исключаем сегодня, если день ещё не завершён (менее 50% целевых калорий)
+  const todayStr = new Date().toISOString().split("T")[0];
+  const completedCalorieDays = calorieHistory.filter((c) => {
+    if (c.calories <= 0) return false;
+    if (c.date === todayStr && c.calories < targetCalories * 0.5) return false;
+    return true;
+  });
+
+  // Для фактического темпа требуется минимум 3 полных дня питания
+  const hasSufficientActualData = completedCalorieDays.length >= 3;
+
+  const actualAvgCalories = hasSufficientActualData
+    ? Math.round(completedCalorieDays.reduce((acc, c) => acc + c.calories, 0) / completedCalorieDays.length)
+    : targetCalories;
 
   const actualDailyDeficit = tdee - actualAvgCalories;
   const targetDailyDeficit = tdee - targetCalories;
 
-  // Изменение веса в день и неделю: дефицит снижает вес (минус), профицит растит (плюс)
-  const actualDailyChangeKg = -(actualDailyDeficit / KCAL_PER_KG_FAT);
+  // Изменение веса в день и неделю
+  let actualDailyChangeKg = -(actualDailyDeficit / KCAL_PER_KG_FAT);
   const targetDailyChangeKg = -(targetDailyDeficit / KCAL_PER_KG_FAT);
-
-  const actualWeeklyChangeKg = Math.round(actualDailyChangeKg * 7 * 100) / 100;
   const targetWeeklyChangeKg = Math.round(targetDailyChangeKg * 7 * 100) / 100;
+
+  let isRateRealistic = true;
+  let actualWeeklyChangeKg = 0;
+  let message = "";
+
+  if (!hasSufficientActualData) {
+    // При недостатке дней (например, 1 неполный день) используем плановый темп, чтобы не показывать −2.2 кг/нед
+    actualDailyChangeKg = targetDailyChangeKg;
+    actualWeeklyChangeKg = targetWeeklyChangeKg;
+    message = "Недостаточно данных для расчёта фактического темпа (нужно минимум 3 полных дня записей). Прогноз построен по вашему плану питания.";
+  } else {
+    const rawWeekly = actualDailyChangeKg * 7;
+    // Ограничиваем экстремальные темпы физиологическим порогом ±1.2 кг/нед
+    if (Math.abs(rawWeekly) > 1.2) {
+      isRateRealistic = false;
+      actualDailyChangeKg = (Math.sign(rawWeekly) || -1) * (1.2 / 7);
+      actualWeeklyChangeKg = (Math.sign(rawWeekly) || -1) * 1.2;
+      message = `Фактический дефицит показывает экстремальный темп (${rawWeekly > 0 ? "+" : ""}${rawWeekly.toFixed(2)} кг/нед). При резком дефиците первые сдвиги отражают потерю жидкости и гликогена, а не чистый жир. Реалистичный устойчивый темп ограничен ~1.0–1.2 кг/нед.`;
+    } else {
+      actualWeeklyChangeKg = Math.round(rawWeekly * 100) / 100;
+      message = "Прогноз сформирован на основе модели энергобаланса и фактического питания.";
+    }
+  }
 
   const baseWeight = currentTrendWeight ?? currentWeight ?? 70;
   const startDate = latestTrendPoint?.date ?? new Date().toISOString().split("T")[0];
@@ -147,8 +177,6 @@ export function calculateWeightForecast(params: {
 
   // Расчёт даты достижения целевого веса
   let estimatedTargetDate: string | null = null;
-  let isRateRealistic = true;
-  let message = "Прогноз сформирован на основе модели энергобаланса.";
 
   if (targetWeightKg && currentTrendWeight) {
     const diff = targetWeightKg - currentTrendWeight;
@@ -158,23 +186,19 @@ export function calculateWeightForecast(params: {
     // Скорость в сторону цели
     const effectiveRatePerDay = actualDailyChangeKg !== 0 ? actualDailyChangeKg : targetDailyChangeKg;
 
-    // Проверяем безопасность темпа: безопасная потеря до 1 кг/нед, набор до 0.5 кг/нед
-    if (Math.abs(actualWeeklyChangeKg) > 1.2) {
-      isRateRealistic = false;
-      message = "Текущий темп изменения веса слишком высокий для устойчивого результата.";
-    }
-
     if ((isLosing && effectiveRatePerDay < 0) || (isGaining && effectiveRatePerDay > 0)) {
       const daysNeeded = Math.round(diff / effectiveRatePerDay);
       if (daysNeeded > 0 && daysNeeded <= 730) {
         estimatedTargetDate = addDays(startDate, daysNeeded);
-        message = `При текущем темпе цель ${targetWeightKg} кг может быть достигнута примерно к ${new Date(
-          estimatedTargetDate + "T12:00:00"
-        ).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}.`;
+        if (hasSufficientActualData) {
+          message = `При текущем темпе цель ${targetWeightKg} кг может быть достигнута примерно к ${new Date(
+            estimatedTargetDate + "T12:00:00"
+          ).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}.`;
+        }
       }
     } else if (Math.abs(diff) <= 0.5) {
       message = "Вы находитесь в пределах целевого веса.";
-    } else {
+    } else if (hasSufficientActualData) {
       message = "Текущая калорийность не направлена в сторону целевого веса.";
     }
   }
@@ -191,6 +215,7 @@ export function calculateWeightForecast(params: {
     targetDailyDeficit,
     actualWeeklyChangeKg,
     targetWeeklyChangeKg,
+    hasSufficientActualData,
     estimatedTargetDate,
     isRateRealistic,
     message,

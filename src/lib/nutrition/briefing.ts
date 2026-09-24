@@ -128,16 +128,28 @@ export function generateDailyBriefing({
     const surplus = Math.abs(remainingCalories);
     headline = `Калорийность дня: ${Math.round(todayConsumed.calories)} ккал (+${surplus} ккал к цели).`;
     keyPoints.push("Один день с профицитом — это абсолютно нормально и не ломает недельный прогресс.");
-    keyPoints.push("Выпейте стакан воды, отдохните и восстановитесь к завтрашнему дню.");
+    keyPoints.push("Отдохните и восстановитесь к завтрашнему дню.");
   }
 
   const remainingProtein = Math.max(0, Math.round(macroTargets.proteinG - todayConsumed.proteinG));
-  const recommendedFocus =
-    remainingCalories > 200 && remainingProtein > 15
-      ? `Рекомендация на ужин: белковое блюдо на ${remainingCalories} ккал (например, запечённая рыба или творог).`
-      : remainingCalories > 0
-      ? `Остаток комфортный: лёгкий перекус или чай перед сном отлично впишутся в бюджет.`
-      : `Цели на сегодня выполнены, вечерний отдых!`;
+  let recommendedFocus: string;
+
+  if (todayConsumed.calories === 0) {
+    recommendedFocus = `Запланируйте сбалансированный приём пищи на 400–600 ккал с упором на белок (цель дня: ${macroTargets.proteinG} г).`;
+  } else if (remainingCalories > 600) {
+    const dishCalories = Math.min(500, Math.max(350, Math.round(remainingCalories * 0.4)));
+    recommendedFocus = remainingProtein > 15
+      ? `Остаток бюджета дня: ${remainingCalories} ккал. Для закрытия нормы белка (осталось ${remainingProtein} г) отлично подойдёт порция белкового блюда на ~${dishCalories} ккал (например, запечённая рыба, птица или творог).`
+      : `Остаток бюджета дня: ${remainingCalories} ккал. Распределите его на комфортный ужин (~400–500 ккал) и вечерний перекус.`;
+  } else if (remainingCalories > 200) {
+    recommendedFocus = remainingProtein > 15
+      ? `На остаток дня (${remainingCalories} ккал): лёгкий белковый ужин на ~${remainingCalories} ккал (творог, омлет или морепродукты для добора ${remainingProtein} г белка).`
+      : `На остаток дня (${remainingCalories} ккал): лёгкое блюдо или перекус, чтобы комфортно уложиться в дневной бюджет.`;
+  } else if (remainingCalories > 0) {
+    recommendedFocus = `Бюджет почти закрыт (осталось ${remainingCalories} ккал): лёгкий перекус или травяной чай перед сном.`;
+  } else {
+    recommendedFocus = `Цели по калориям на сегодня выполнены, вечерний отдых и восстановление!`;
+  }
 
   return {
     type: "evening",

@@ -51,6 +51,7 @@ export type Profile = {
   language: string;
   theme: string;
   onboarding_completed: boolean;
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -186,6 +187,8 @@ export interface Database {
       water_entries: Table<WaterEntry, "user_id" | "amount_ml">;
       ai_feedback: Table<AiFeedback, "user_id" | "ai_prediction" | "was_accepted">;
       workout_entries: Table<WorkoutDbEntry, "user_id" | "exercise_name">;
+      friend_access_codes: Table<{ id: string; user_id: string; code: string; is_active: boolean; created_at: string; updated_at: string }, "user_id" | "code">;
+      friend_connections: Table<{ id: string; owner_id: string; viewer_id: string; status: "active" | "revoked"; created_at: string; updated_at: string }, "owner_id" | "viewer_id">;
     };
     Views: {
       daily_stats: { Row: DailyStat; Relationships: [] };
@@ -195,6 +198,13 @@ export interface Database {
       consume_ai_quota: { Args: Record<string, never>; Returns: boolean };
       save_weight: { Args: { p_weight: number; p_date: string; p_targets: Json }; Returns: undefined };
       search_foods: { Args: { p_query: string; p_limit?: number }; Returns: FoodItem[] };
+      generate_or_get_friend_code: { Args: Record<string, never>; Returns: string };
+      refresh_friend_code: { Args: Record<string, never>; Returns: string };
+      connect_friend_by_code: { Args: { p_code: string }; Returns: { owner_id: string; display_name: string; code: string } };
+      revoke_viewer_access: { Args: { p_viewer_id: string }; Returns: undefined };
+      disconnect_from_friend: { Args: { p_owner_id: string }; Returns: undefined };
+      get_my_friends: { Args: Record<string, never>; Returns: { owner_id: string; display_name: string; avatar_url: string | null; connected_at: string }[] };
+      get_my_viewers: { Args: Record<string, never>; Returns: { viewer_id: string; display_name: string; avatar_url: string | null; connected_at: string }[] };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;

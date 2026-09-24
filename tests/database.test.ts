@@ -92,4 +92,62 @@ describe("migrations and RLS on PostgreSQL", () => {
     await db.query(sql,[alice,75]); await db.query(sql,[alice,76]);
     expect((await db.query("SELECT * FROM weight_entries")).rows).toHaveLength(1);
   });
+  it("generates, connects, shares diary with friend, and enforces read-only RLS", async () => {
+    // 1. Alice generates her friend code
+    await asUser(alice);
+    const aliceRes1 = await db.query<{ code: string }>("SELECT public.generate_or_get_friend_code() AS code");
+    const aliceCode = aliceRes1.rows[0].code;
+    expect(aliceCode).toMatch(/^CAL-[0-9A-HJ-NP-Z]{4}-[0-9A-HJ-NP-Z]{4}$/);
+
+    // Calling it again returns the same code
+    const aliceRes2 = await db.query<{ code: string }>("SELECT public.generate_or_get_friend_code() AS code");
+    expect(aliceRes2.rows[0].code).toBe(aliceCode);
+
+    // 2. Alice saves a meal
+    const mealId = randomUUID();
+    await save(mealId);
+
+    // 3. Bob cannot yet see Alice's meal
+    await asUser(bob);
+    expect((await db.query("SELECT * FROM meal_entries WHERE user_id = $1", [alice])).rows).toHaveLength(0);
+
+    // Bob cannot connect with his own code
+    const bobCodeRes = await db.query<{ code: string }>("SELECT public.generate_or_get_friend_code() AS code");
+    await expect(db.query("SELECT public.connect_friend_by_code($1)", [bobCodeRes.rows[0].code])).rejects.toThrow(/Нельзя добавить свой собственный код/);
+
+    // Bob connects to Alice
+    const connectRes = await db.query<{ connect_friend_by_code: { owner_id: string } }>("SELECT public.connect_friend_by_code($1)", [aliceCode]);
+    expect(connectRes.rows[0].connect_friend_by_code.owner_id).toBe(alice);
+
+    // 4. Bob can now SELECT Alice's meal and daily stats
+    const bobSeesAliceMeals = await db.query("SELECT * FROM meal_entries WHERE user_id = $1", [alice]);
+    expect(bobSeesAliceMeals.rows).toHaveLength(1);
+    const bobSeesAliceItems = await db.query("SELECT * FROM meal_items WHERE user_id = $1", [alice]);
+    expect(bobSeesAliceItems.rows).toHaveLength(1);
+    const bobSeesAliceStats = await db.query("SELECT * FROM daily_stats WHERE user_id = $1", [alice]);
+    expect(bobSeesAliceStats.rows).toHaveLength(1);
+
+    // 5. Bob CANNOT insert, update, or delete Alice's data (strictly read-only)
+    await expect(db.query("DELETE FROM meal_entries WHERE id = $1", [mealId])).resolves.toMatchObject({ affectedRows: 0 });
+    await expect(db.query("UPDATE meal_entries SET meal_type = 'dinner' WHERE id = $1", [mealId])).resolves.toMatchObject({ affectedRows: 0 });
+    await expect(db.query(`INSERT INTO meal_items(meal_entry_id,user_id,weight_grams,calories,protein_g,fat_g,carbs_g)
+      VALUES($1,$2,100,1,1,1,1)`, [mealId, bob])).rejects.toThrow(/row-level security/);
+
+    // 6. Friends lists
+    const bobFriends = await db.query<{ owner_id: string }>("SELECT * FROM public.get_my_friends()");
+    expect(bobFriends.rows).toHaveLength(1);
+    expect(bobFriends.rows[0].owner_id).toBe(alice);
+
+    await asUser(alice);
+    const aliceViewers = await db.query<{ viewer_id: string }>("SELECT * FROM public.get_my_viewers()");
+    expect(aliceViewers.rows).toHaveLength(1);
+    expect(aliceViewers.rows[0].viewer_id).toBe(bob);
+
+    // 7. Alice revokes Bob's access
+    await db.query("SELECT public.revoke_viewer_access($1)", [bob]);
+
+    await asUser(bob);
+    expect((await db.query("SELECT * FROM meal_entries WHERE user_id = $1", [alice])).rows).toHaveLength(0);
+    expect((await db.query("SELECT * FROM public.get_my_friends()")).rows).toHaveLength(0);
+  });
 });

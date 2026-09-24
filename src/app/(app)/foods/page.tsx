@@ -65,6 +65,7 @@ function FoodsFlow() {
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [externalResults, setExternalResults] = useState<SearchResult[] | null>(null);
   const [externalLoading, setExternalLoading] = useState(false);
+  const [externalError, setExternalError] = useState<string | null>(null);
   const [selected, setSelected] = useState<SearchResult | null>(null);
   const [weight, setWeight] = useState("100");
   const [adding, setAdding] = useState(false);
@@ -110,7 +111,7 @@ function FoodsFlow() {
     const query = q.trim();
     if (query.length < 2 || externalLoading) return;
     externalQuery.current = query;
-    setError(null);
+    setExternalError(null);
     setExternalLoading(true);
     try {
       const response = await fetch(`/api/foods/external?q=${encodeURIComponent(query)}`);
@@ -118,7 +119,7 @@ function FoodsFlow() {
       if (!response.ok) throw new Error(result.error || "Не удалось найти продукты");
       if (externalQuery.current === query) setExternalResults(result.items ?? []);
     } catch (cause) {
-      if (externalQuery.current === query) setError(cause instanceof Error ? cause.message : "Не удалось найти продукты");
+      if (externalQuery.current === query) setExternalError(cause instanceof Error ? cause.message : "Не удалось найти продукты");
     } finally {
       setExternalLoading(false);
     }
@@ -283,6 +284,7 @@ function FoodsFlow() {
           onChange={(e) => {
             setQ(e.target.value);
             setExternalResults(null);
+            setExternalError(null);
             externalQuery.current = "";
           }}
           maxLength={100}
@@ -292,14 +294,21 @@ function FoodsFlow() {
       </div>
 
       {!selected && q.trim().length >= 2 && (
-        <button
-          onClick={searchExternal}
-          disabled={externalLoading}
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-primary px-4 py-3 text-sm font-medium text-primary disabled:opacity-50"
-        >
-          {externalLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {externalLoading ? "Ищем…" : "Искать ещё в Open Food Facts"}
-        </button>
+        <div className="mb-4 space-y-1.5">
+          <button
+            onClick={searchExternal}
+            disabled={externalLoading}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-50"
+          >
+            {externalLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {externalLoading ? "Ищем во внешней базе…" : "Искать ещё в Open Food Facts"}
+          </button>
+          {externalError && (
+            <p className="text-center text-xs text-muted-foreground px-2">
+              {externalError}. Локальная база продуктов доступна ниже.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Выбранный продукт — ввод веса */}

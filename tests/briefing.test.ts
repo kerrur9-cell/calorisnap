@@ -56,4 +56,19 @@ describe("Daily Briefing", () => {
     expect(briefing.type).toBe("evening");
     expect(briefing.keyPoints.some((p) => p.includes("не ломает недельный прогресс"))).toBe(true);
   });
+
+  it("suggests realistic portions instead of single huge meal when remaining calories is high", () => {
+    const briefing = generateDailyBriefing({
+      timeOfDay: "evening",
+      todayConsumed: { calories: 508, proteinG: 40, fatG: 20, carbsG: 45 },
+      calorieGoal: 2000,
+      macroTargets: { proteinG: 140, fatG: 65, carbsG: 215 },
+    });
+
+    expect(briefing.remainingCalories).toBe(1492);
+    // Should NOT say "белковое блюдо на 1492 ккал"
+    expect(briefing.recommendedFocus).not.toContain("блюдо на 1492 ккал");
+    expect(briefing.recommendedFocus).toContain("Остаток бюджета дня: 1492 ккал");
+    expect(briefing.recommendedFocus).toMatch(/порция .* ~[345]\d0 ккал/);
+  });
 });

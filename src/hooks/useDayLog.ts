@@ -5,30 +5,46 @@ import { createClient } from "@/lib/supabase/client";
 import type { MealType, MealWithItems } from "@/types/database";
 import { sumTotals, type DayTotals } from "@/lib/nutrition/macros";
 
+import { useFriendView } from "@/context/FriendViewContext";
+
 export interface DayData {
   meals: MealWithItems[];
   totals: DayTotals;
   mealCount: number;
 }
 
-export function dayQueryKey(dateKey: string) {
-  return ["day", dateKey] as const;
+export function dayQueryKey(dateKey: string, targetUserId?: string | null) {
+  return ["day", dateKey, targetUserId ?? "self"] as const;
 }
 
 /**
  * Загрузка всех приёмов пищи и продуктов за выбранный день.
  * Один запрос на «день», инвалидируется после любых изменений.
  */
-export function useDayLog(dateKey: string) {
+export function useDayLog(dateKey: string, overrideUserId?: string | null) {
+  const { targetUserId } = useFriendView();
+  const effectiveUserId = overrideUserId !== undefined ? overrideUserId : targetUserId;
+
   return useQuery({
-    queryKey: dayQueryKey(dateKey),
+    queryKey: dayQueryKey(dateKey, effectiveUserId),
     queryFn: async (): Promise<DayData> => {
       const supabase = createClient();
 
-      const mealsRes = await supabase
+      let query = supabase
         .from("meal_entries")
         .select("*, meal_items(*)")
-        .eq("entry_date", dateKey)
+        .eq("entry_date", dateKey);
+
+      if (effectiveUserId) {
+        query = query.eq("user_id", effectiveUserId);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          query = query.eq("user_id", user.id);
+        }
+      }
+
+      const mealsRes = await query
         .order("logged_at", { ascending: true })
         .returns<MealWithItems[]>();
 

@@ -6,6 +6,7 @@ import { Camera, Sparkles, Flame, User, UtensilsCrossed } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { useFriendView } from "@/context/FriendViewContext";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -20,6 +21,7 @@ export function TabBar() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isGuestView } = useFriendView();
   const [prevPath, setPrevPath] = useState(pathname);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
 
@@ -32,7 +34,9 @@ export function TabBar() {
   // Немедленный фоновый предзапрос всех вкладок и данных
   useEffect(() => {
     TABS.forEach((tab) => router.prefetch(tab.href));
-    router.prefetch("/camera");
+    if (!isGuestView) {
+      router.prefetch("/camera");
+    }
 
     // В свободное время (через 1с) прогреваем кэш данных для AI Хаба и Профиля
     const timer = setTimeout(() => {
@@ -53,7 +57,7 @@ export function TabBar() {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [router, queryClient]);
+  }, [router, queryClient, isGuestView]);
 
   return (
     <nav
@@ -71,34 +75,50 @@ export function TabBar() {
         ))}
 
         {/* Центральная кнопка камеры */}
-        <Link
-          href="/camera"
-          prefetch={true}
-          onClick={() => setPendingHref("/camera")}
-          className="relative -top-4 flex flex-col items-center justify-center group"
-          aria-label="Сфотографировать еду"
-        >
-          <span
-            className={cn(
-              "btn-glossy spring-press flex h-13 w-13 items-center justify-center rounded-full shadow-lg transition-all duration-300",
-              (pendingHref === "/camera" || pathname === "/camera")
-                ? "bg-primary ring-4 ring-primary/25 shadow-primary/40 scale-105"
-                : "bg-primary shadow-primary/30 group-hover:scale-105",
-            )}
+        {isGuestView ? (
+          <button
+            type="button"
+            onClick={() => alert("В режиме просмотра профиля друга добавление фото недоступно")}
+            className="relative -top-4 flex flex-col items-center justify-center opacity-60 cursor-not-allowed"
+            aria-label="В режиме просмотра добавление фото недоступно"
           >
-            <Camera className="h-6 w-6 text-primary-foreground stroke-[2.2]" />
-          </span>
-          <span
-            className={cn(
-              "mt-1 text-[10px] font-semibold tracking-tight transition-colors",
-              (pendingHref === "/camera" || pathname === "/camera")
-                ? "text-primary"
-                : "text-muted-foreground group-hover:text-foreground",
-            )}
+            <span className="btn-glossy flex h-13 w-13 items-center justify-center rounded-full bg-muted border border-border/60 shadow-sm text-muted-foreground">
+              <Camera className="h-6 w-6 stroke-[1.8]" />
+            </span>
+            <span className="mt-1 text-[10px] font-semibold text-muted-foreground">
+              Фото
+            </span>
+          </button>
+        ) : (
+          <Link
+            href="/camera"
+            prefetch={true}
+            onClick={() => setPendingHref("/camera")}
+            className="relative -top-4 flex flex-col items-center justify-center group"
+            aria-label="Сфотографировать еду"
           >
-            Фото
-          </span>
-        </Link>
+            <span
+              className={cn(
+                "btn-glossy spring-press flex h-13 w-13 items-center justify-center rounded-full shadow-lg transition-all duration-300",
+                (pendingHref === "/camera" || pathname === "/camera")
+                  ? "bg-primary ring-4 ring-primary/25 shadow-primary/40 scale-105"
+                  : "bg-primary shadow-primary/30 group-hover:scale-105",
+              )}
+            >
+              <Camera className="h-6 w-6 text-primary-foreground stroke-[2.2]" />
+            </span>
+            <span
+              className={cn(
+                "mt-1 text-[10px] font-semibold tracking-tight transition-colors",
+                (pendingHref === "/camera" || pathname === "/camera")
+                  ? "text-primary"
+                  : "text-muted-foreground group-hover:text-foreground",
+              )}
+            >
+              Фото
+            </span>
+          </Link>
+        )}
 
         {TABS.slice(2).map((tab) => (
           <TabLink

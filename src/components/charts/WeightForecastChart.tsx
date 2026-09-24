@@ -165,11 +165,13 @@ export function WeightForecastChart({
           <div className="mt-0.5 text-lg font-bold">
             {forecast.currentTrendWeight?.toFixed(1).replace(".", ",")} кг
           </div>
-          <div className="text-xs text-muted-foreground">без водных всплесков</div>
+          <div className="text-xs text-muted-foreground">сглаженный тренд</div>
         </div>
 
         <div className="rounded-2xl bg-muted/40 p-3">
-          <div className="text-xs text-muted-foreground">Темп изменения</div>
+          <div className="text-xs text-muted-foreground">
+            {forecast.hasSufficientActualData ? "Фактический темп" : "Темп (по плану)"}
+          </div>
           <div className="mt-0.5 flex items-center gap-1 text-lg font-bold">
             {forecast.actualWeeklyChangeKg < 0 ? (
               <TrendingDown className="h-4 w-4 text-primary" />
@@ -180,7 +182,9 @@ export function WeightForecastChart({
             {forecast.actualWeeklyChangeKg.toFixed(2).replace(".", ",")} кг/нед
           </div>
           <div className="text-xs text-muted-foreground">
-            дефицит {forecast.actualDailyDeficit > 0 ? `${forecast.actualDailyDeficit} ккал` : "нет"}
+            {forecast.hasSufficientActualData
+              ? `дефицит ${forecast.actualDailyDeficit > 0 ? `${forecast.actualDailyDeficit} ккал` : "нет"}`
+              : "план питания (<3 дн.)"}
           </div>
         </div>
 
@@ -315,7 +319,7 @@ export function WeightForecastChart({
         <div>
           <p className="font-medium text-foreground">{forecast.message}</p>
           <p className="mt-0.5">
-            Полупрозрачный коридор отражает естественные суточные колебания воды и соли (±0.7 кг).
+            Полупрозрачный коридор отражает естественные суточные колебания жидкости и соли (±0.7 кг).
           </p>
         </div>
       </div>

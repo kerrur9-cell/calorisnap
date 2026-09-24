@@ -61,4 +61,20 @@ describe("Weight Forecast", () => {
     expect(forecast.currentWeight).toBeNull();
     expect(forecast.forecastPoints).toHaveLength(60);
   });
+
+  it("does not extrapolate extreme pace from a single incomplete day", () => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const forecast = calculateWeightForecast({
+      weightHistory: [{ date: todayStr, weightKg: 80.0 }],
+      calorieHistory: [{ date: todayStr, calories: 300 }], // user just logged breakfast
+      tdee: 2740,
+      targetCalories: 2200,
+      targetWeightKg: 75.0,
+    });
+
+    // Should NOT show extreme rate like -2.22 kg/week
+    expect(forecast.hasSufficientActualData).toBe(false);
+    expect(forecast.actualWeeklyChangeKg).toBeCloseTo(-0.49, 1);
+    expect(forecast.message).toContain("Недостаточно данных для расчёта фактического темпа");
+  });
 });

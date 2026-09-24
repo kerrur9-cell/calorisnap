@@ -29,12 +29,12 @@ export function SmartInsightsCard({ weights, nutritionHistory }: SmartInsightsCa
         <h3 className="text-sm font-bold">Умные инсайты динамики тела</h3>
       </div>
 
-      {/* Задержка воды */}
+      {/* Задержка жидкости */}
       {insights.waterRetention.detected && (
         <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-3.5 text-xs text-foreground">
           <div className="flex items-center gap-2 font-bold text-sky-500">
             <Droplets className="h-4 w-4 shrink-0" />
-            <span>Задержка воды: +{insights.waterRetention.weightDeltaKg} кг</span>
+            <span>Задержка жидкости: +{insights.waterRetention.weightDeltaKg} кг</span>
           </div>
           <p className="mt-1.5 leading-relaxed text-muted-foreground">
             {insights.waterRetention.message}

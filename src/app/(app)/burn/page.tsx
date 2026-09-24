@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useWorkouts } from "@/hooks/useWorkouts";
 import { useDayLog } from "@/hooks/useDayLog";
+import { useFriendView } from "@/context/FriendViewContext";
 import { todayKey, addDays } from "@/lib/utils";
 import { MachineCatalogModal } from "@/components/workout/MachineCatalogModal";
 import { EquipmentPhotoModal } from "@/components/workout/EquipmentPhotoModal";
@@ -23,6 +24,7 @@ import { WorkoutVoiceModal } from "@/components/workout/WorkoutVoiceModal";
 import { ManualWorkoutModal } from "@/components/workout/ManualWorkoutModal";
 
 export default function BurnPage() {
+  const { isGuestView } = useFriendView();
   const [dateKey, setDateKey] = useState(todayKey());
   const isToday = dateKey === todayKey();
 
@@ -90,7 +92,7 @@ export default function BurnPage() {
       </header>
 
       {/* Предупреждение об отсутствии веса в профиле */}
-      {isWeightMissing && (
+      {isWeightMissing && !isGuestView && (
         <div className="mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs flex items-center justify-between text-amber-700 dark:text-amber-300">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
@@ -176,91 +178,95 @@ export default function BurnPage() {
           <span>
             Вес в расчёте: <b>{userWeightKg > 0 ? `${userWeightKg} кг` : "не указан (расчёт по умолчанию)"}</b>
           </span>
-          <Link href="/profile" className="text-primary hover:underline">
-            {userWeightKg > 0 ? "Изменить в профиле →" : "Указать в профиле →"}
-          </Link>
+          {!isGuestView && (
+            <Link href="/profile" className="text-primary hover:underline">
+              {userWeightKg > 0 ? "Изменить в профиле →" : "Указать в профиле →"}
+            </Link>
+          )}
         </div>
       </section>
 
       {/* Быстрые действия: 4 способа добавить тренировку */}
-      <section className="mb-4">
-        <h2 className="mb-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Записать упражнение
-        </h2>
-        <div className="grid grid-cols-2 gap-2.5">
-          {/* Голос / Текст */}
-          <button
-            onClick={() => setShowVoice(true)}
-            className="glass-card glossy-sheen scroll-sway spring-press flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary-soft/40 p-3 text-left transition-all hover:border-primary active:scale-[0.97]"
-          >
-            <div className="rounded-xl bg-primary-soft p-2 text-primary shrink-0 shadow-2xs">
-              <Mic className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-foreground truncate">
-                Голосом / текстом
+      {!isGuestView && (
+        <section className="mb-4">
+          <h2 className="mb-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Записать упражнение
+          </h2>
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* Голос / Текст */}
+            <button
+              onClick={() => setShowVoice(true)}
+              className="glass-card glossy-sheen scroll-sway spring-press flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary-soft/40 p-3 text-left transition-all hover:border-primary active:scale-[0.97]"
+            >
+              <div className="rounded-xl bg-primary-soft p-2 text-primary shrink-0 shadow-2xs">
+                <Mic className="h-4 w-4" />
               </div>
-              <div className="text-[10px] text-muted-foreground truncate">
-                «Я сделала 4 по 15»
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-foreground truncate">
+                  Голосом / текстом
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  «Я сделала 4 по 15»
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
 
-          {/* Сфоткать тренажер */}
-          <button
-            onClick={() => setShowPhoto(true)}
-            className="glass-card glossy-sheen scroll-sway-reverse spring-press flex items-center gap-3 rounded-2xl border border-border/80 bg-card/70 p-3 text-left transition-all hover:border-primary/50 active:scale-[0.97]"
-          >
-            <div className="rounded-xl bg-muted p-2 text-foreground shrink-0 shadow-2xs">
-              <Camera className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-foreground truncate">
-                Сфоткать тренажер
+            {/* Сфоткать тренажер */}
+            <button
+              onClick={() => setShowPhoto(true)}
+              className="glass-card glossy-sheen scroll-sway-reverse spring-press flex items-center gap-3 rounded-2xl border border-border/80 bg-card/70 p-3 text-left transition-all hover:border-primary/50 active:scale-[0.97]"
+            >
+              <div className="rounded-xl bg-muted p-2 text-foreground shrink-0 shadow-2xs">
+                <Camera className="h-4 w-4" />
               </div>
-              <div className="text-[10px] text-muted-foreground truncate">
-                AI определит по фото
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-foreground truncate">
+                  Сфоткать тренажер
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  AI определит по фото
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
 
-          {/* Каталог тренажеров */}
-          <button
-            onClick={() => setShowCatalog(true)}
-            className="glass-card glossy-sheen scroll-sway spring-press flex items-center gap-3 rounded-2xl border border-border/80 bg-card/70 p-3 text-left transition-all hover:border-primary/50 active:scale-[0.97]"
-          >
-            <div className="rounded-xl bg-muted p-2 text-foreground shrink-0 shadow-2xs">
-              <Dumbbell className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-foreground truncate">
-                Список тренажеров
+            {/* Каталог тренажеров */}
+            <button
+              onClick={() => setShowCatalog(true)}
+              className="glass-card glossy-sheen scroll-sway spring-press flex items-center gap-3 rounded-2xl border border-border/80 bg-card/70 p-3 text-left transition-all hover:border-primary/50 active:scale-[0.97]"
+            >
+              <div className="rounded-xl bg-muted p-2 text-foreground shrink-0 shadow-2xs">
+                <Dumbbell className="h-4 w-4" />
               </div>
-              <div className="text-[10px] text-muted-foreground truncate">
-                Выбрать из каталога
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-foreground truncate">
+                  Список тренажеров
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  Выбрать из каталога
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
 
-          {/* Вручную ккал */}
-          <button
-            onClick={() => setShowManual(true)}
-            className="glass-card glossy-sheen scroll-sway-reverse spring-press flex items-center gap-3 rounded-2xl border border-border/80 bg-card/70 p-3 text-left transition-all hover:border-primary/50 active:scale-[0.97]"
-          >
-            <div className="rounded-xl bg-muted p-2 text-foreground shrink-0 shadow-2xs">
-              <Plus className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-foreground truncate">
-                Вписать ккал
+            {/* Вручную ккал */}
+            <button
+              onClick={() => setShowManual(true)}
+              className="glass-card glossy-sheen scroll-sway-reverse spring-press flex items-center gap-3 rounded-2xl border border-border/80 bg-card/70 p-3 text-left transition-all hover:border-primary/50 active:scale-[0.97]"
+            >
+              <div className="rounded-xl bg-muted p-2 text-foreground shrink-0 shadow-2xs">
+                <Plus className="h-4 w-4" />
               </div>
-              <div className="text-[10px] text-muted-foreground truncate">
-                Точное число калорий
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-foreground truncate">
+                  Вписать ккал
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  Точное число калорий
+                </div>
               </div>
-            </div>
-          </button>
-        </div>
-      </section>
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Список выполненных активностей за день */}
       <section className="mb-6 space-y-2.5">
@@ -284,14 +290,18 @@ export default function BurnPage() {
               Нет записанных упражнений
             </div>
             <p className="text-xs text-muted-foreground max-w-xs mb-4">
-              Сделайте тренировку, сфотографируйте тренажер или продиктуйте голосом
+              {isGuestView
+                ? "У друга нет записей тренировок за этот день"
+                : "Сделайте тренировку, сфотографируйте тренажер или продиктуйте голосом"}
             </p>
-            <button
-              onClick={() => setShowVoice(true)}
-              className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-xs"
-            >
-              <Mic className="h-3.5 w-3.5" /> Сказать упражнение
-            </button>
+            {!isGuestView && (
+              <button
+                onClick={() => setShowVoice(true)}
+                className="btn-glossy spring-press flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-xs"
+              >
+                <Mic className="h-3.5 w-3.5" /> Сказать упражнение
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -336,13 +346,15 @@ export default function BurnPage() {
                       </span>
                     )}
                   </div>
-                  <button
-                    onClick={() => deleteWorkout(w.id)}
-                    className="rounded-full p-1.5 text-muted-foreground hover:text-danger hover:bg-muted transition-colors"
-                    title="Удалить"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {!isGuestView && (
+                    <button
+                      onClick={() => deleteWorkout(w.id)}
+                      className="rounded-full p-1.5 text-muted-foreground hover:text-danger hover:bg-muted transition-colors"
+                      title="Удалить"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

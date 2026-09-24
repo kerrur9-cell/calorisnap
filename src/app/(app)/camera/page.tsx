@@ -24,6 +24,7 @@ import { dayQueryKey } from "@/hooks/useDayLog";
 import { useQueryClient } from "@tanstack/react-query";
 import { saveMeal } from "@/lib/meals";
 import { resolveMealType, nutritionSchema, weightSchema, foodNameSchema } from "@/lib/validation";
+import { useFriendView } from "@/context/FriendViewContext";
 
 type Stage = "capture" | "analyzing" | "result" | "error";
 
@@ -44,12 +45,18 @@ export default function CameraPage() {
 
 function CameraFlow() {
   const router = useRouter();
+  const { isGuestView } = useFriendView();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const mealType = resolveMealType(searchParams.get("meal"));
   const pendingMeal = useRef<string | null>(null);
   const saveLock = useRef(false);
 
+  useEffect(() => {
+    if (isGuestView) {
+      router.replace("/day");
+    }
+  }, [isGuestView, router]);
   const [stage, setStage] = useState<Stage>("capture");
   const [photo, setPhoto] = useState<PhotoInput | null>(null);
   const [totalWeight, setTotalWeight] = useState("");
@@ -240,6 +247,10 @@ function CameraFlow() {
       ),
     [items],
   );
+
+  if (isGuestView) {
+    return null;
+  }
 
   return (
     <main className="min-h-dvh bg-background px-4 pb-8 pt-6">

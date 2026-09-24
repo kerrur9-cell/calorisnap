@@ -72,8 +72,8 @@ export function analyzeWaterRetention(
       return {
         detected: true,
         weightDeltaKg: weightDelta,
-        message: `Скачок веса на +${weightDelta} кг за последние 1-2 дня — это задержка воды и гликогена, а не жировая масса. Чтобы набрать ${weightDelta} кг чистого жира, потребовалось бы переесть свыше ${Math.round(weightDelta * 7700)} ккал сверх нормы.`,
-        recommendation: "Продолжайте обычный рацион и пейте чистую воду. Лишняя жидкость сойдёт самостоятельно за 48-72 часа.",
+        message: `Скачок веса на +${weightDelta} кг за последние 1-2 дня — это задержка жидкости и гликогена, а не жировая масса. Чтобы набрать ${weightDelta} кг чистого жира, потребовалось бы переесть свыше ${Math.round(weightDelta * 7700)} ккал сверх нормы.`,
+        recommendation: "Продолжайте обычный рацион. Лишняя жидкость сойдёт самостоятельно за 48-72 часа.",
       };
     }
   }
@@ -129,7 +129,7 @@ export function analyzePlateau(
       daysStalled: windowDays,
       averageDeficitKcal: avgDeficit,
       actionRecommendation: isProlonged ? "refeed" : "recalculate_tdee",
-      message: `Вес удерживается в одном коридоре уже ${windowDays} дней, несмотря на средний дефицит ~${avgDeficit} ккал/день. Это физиологическая адаптация (снижение базового расхода NEAT и задержка кортизоловой воды).`,
+      message: `Вес удерживается в одном коридоре уже ${windowDays} дней, несмотря на средний дефицит ~${avgDeficit} ккал/день. Это физиологическая адаптация (снижение базового расхода NEAT и задержка кортизоловой жидкости).`,
     };
   }
 

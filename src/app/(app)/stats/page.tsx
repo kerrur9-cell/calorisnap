@@ -19,6 +19,7 @@ import { addDays, todayKey } from "@/lib/utils";
 import { calculateTdee } from "@/lib/nutrition/tdee";
 import { SmartInsightsCard } from "@/components/stats/SmartInsightsCard";
 import type { MealHistoryEntry } from "@/lib/nutrition/personalization";
+import { useFriendView } from "@/context/FriendViewContext";
 import dynamic from "next/dynamic";
 
 const WeightForecastChart = dynamic(
@@ -57,6 +58,7 @@ type Period = "week" | "month";
 
 function StatsFlow() {
   const [period, setPeriod] = useState<Period>("week");
+  const { targetUserId } = useFriendView();
   const { data: profile } = useProfile();
   const goal = profile?.daily_calorie_target ?? 2000;
 
@@ -67,27 +69,40 @@ function StatsFlow() {
   }, [period]);
 
   const { data: calories, error, isLoading } = useQuery({
-    queryKey: ["stats", period, days[0]],
+    queryKey: ["stats", period, days[0], targetUserId ?? "self"],
     queryFn: async () => {
       const supabase = createClient();
+      let effectiveId = targetUserId;
+      if (!effectiveId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        effectiveId = user?.id ?? null;
+      }
+
+      let statsQuery = supabase
+        .from("daily_stats")
+        .select("*")
+        .gte("entry_date", days[0])
+        .lte("entry_date", days[days.length - 1]);
+      if (effectiveId) statsQuery = statsQuery.eq("user_id", effectiveId);
+
+      let weightsQuery = supabase
+        .from("weight_entries")
+        .select("weight_kg, recorded_at")
+        .gte("recorded_at", days[0])
+        .lte("recorded_at", days[days.length - 1]);
+      if (effectiveId) weightsQuery = weightsQuery.eq("user_id", effectiveId);
+
+      let mealsQuery = supabase
+        .from("meal_entries")
+        .select("id, meal_type, entry_date, logged_at, meal_items(id, custom_food_name, weight_grams, calories, protein_g, fat_g, carbs_g)")
+        .gte("entry_date", days[0])
+        .lte("entry_date", days[days.length - 1]);
+      if (effectiveId) mealsQuery = mealsQuery.eq("user_id", effectiveId);
+
       const [stats, weights, meals] = await Promise.all([
-        supabase
-          .from("daily_stats")
-          .select("*")
-          .gte("entry_date", days[0])
-          .lte("entry_date", days[days.length - 1])
-          .order("entry_date"),
-        supabase
-          .from("weight_entries")
-          .select("weight_kg, recorded_at")
-          .gte("recorded_at", days[0])
-          .lte("recorded_at", days[days.length - 1])
-          .order("recorded_at", { ascending: true }),
-        supabase
-          .from("meal_entries")
-          .select("id, meal_type, entry_date, logged_at, meal_items(id, custom_food_name, weight_grams, calories, protein_g, fat_g, carbs_g)")
-          .gte("entry_date", days[0])
-          .lte("entry_date", days[days.length - 1]),
+        statsQuery.order("entry_date"),
+        weightsQuery.order("recorded_at", { ascending: true }),
+        mealsQuery,
       ]);
       if (stats.error) throw stats.error;
       if (weights.error) throw weights.error;

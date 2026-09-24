@@ -11,6 +11,7 @@ import { dayQueryKey } from "@/hooks/useDayLog";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import type { FoodSwapItem } from "@/lib/nutrition/swap";
+import { useFriendView } from "@/context/FriendViewContext";
 
 const FoodSwapModal = dynamic(
   () => import("./FoodSwapModal").then((mod) => mod.FoodSwapModal),
@@ -44,6 +45,7 @@ export function MealCard({
   const meta = mealTypeMeta(meal.meal_type);
   const totals = sumTotals(meal.meal_items);
   const queryClient = useQueryClient();
+  const { isGuestView } = useFriendView();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -57,6 +59,7 @@ export function MealCard({
   }
 
   async function handleDelete() {
+    if (isGuestView) return;
     if (!confirm(`Удалить «${meta.label}»?`)) return;
     setDeleting(true);
     setError(null);
@@ -102,14 +105,16 @@ export function MealCard({
               <ImageIcon className="h-3.5 w-3.5 text-primary" /> фото
             </button>
           )}
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            aria-label="Удалить приём пищи"
-            className="rounded-lg p-1.5 text-muted-foreground/70 transition-colors hover:bg-danger-soft hover:text-danger active:scale-95"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          {!isGuestView && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              aria-label="Удалить приём пищи"
+              className="rounded-lg p-1.5 text-muted-foreground/70 transition-colors hover:bg-danger-soft hover:text-danger active:scale-95"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -138,23 +143,25 @@ export function MealCard({
               className="group flex items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-sm transition-colors hover:bg-muted/30"
             >
               <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                <button
-                  onClick={() =>
-                    setSwappingItem({
-                      name,
-                      weightGrams: item.weight_grams ?? 100,
-                      calories: item.calories,
-                      proteinG: item.protein_g,
-                      fatG: item.fat_g,
-                      carbsG: item.carbs_g,
-                    })
-                  }
-                  title="Подобрать замену (Food Swap)"
-                  aria-label={`Подобрать замену для ${name}`}
-                  className="rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-primary-soft hover:text-primary shrink-0"
-                >
-                  <ArrowLeftRight className="h-3.5 w-3.5" />
-                </button>
+                {!isGuestView && (
+                  <button
+                    onClick={() =>
+                      setSwappingItem({
+                        name,
+                        weightGrams: item.weight_grams ?? 100,
+                        calories: item.calories,
+                        proteinG: item.protein_g,
+                        fatG: item.fat_g,
+                        carbsG: item.carbs_g,
+                      })
+                    }
+                    title="Подобрать замену (Food Swap)"
+                    aria-label={`Подобрать замену для ${name}`}
+                    className="rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-primary-soft hover:text-primary shrink-0"
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <span className="text-foreground truncate text-xs sm:text-sm font-medium">
                   {name}
                   {item.weight_grams != null && (

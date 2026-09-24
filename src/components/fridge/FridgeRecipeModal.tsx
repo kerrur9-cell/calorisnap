@@ -99,6 +99,7 @@ export function FridgeRecipeModal({
           remainingCarbs: remainingTotals.carbsG,
           mealType: selectedMealType,
         }),
+        signal: AbortSignal.timeout(22000),
       });
 
       const data = await res.json();
@@ -106,7 +107,11 @@ export function FridgeRecipeModal({
 
       setRecipes(data.recipes ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка при генерации рецептов");
+      if (err instanceof Error && (err.name === "TimeoutError" || err.message.includes("timeout"))) {
+        setError("Время ожидания рецепта истекло. Пожалуйста, нажмите «Подобрать рецепты» ещё раз.");
+      } else {
+        setError(err instanceof Error ? err.message : "Ошибка при генерации рецептов");
+      }
     } finally {
       setIsLoading(false);
     }

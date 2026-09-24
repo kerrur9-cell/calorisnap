@@ -5,16 +5,36 @@ import { useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/types/database";
 
+import { useFriendView } from "@/context/FriendViewContext";
+
 /**
  * Профиль пользователя. Кэшируется на 5 минут;
  * после сохранения норм вызывайте invalidateProfiles().
  */
 
-export function useProfile(initialProfile?: Profile) {
+export function profileQueryKey(targetUserId?: string | null) {
+  return ["profile", targetUserId ?? "self"] as const;
+}
+
+export function useProfile(initialProfile?: Profile, overrideUserId?: string | null) {
+  const { targetUserId } = useFriendView();
+  const effectiveUserId = overrideUserId !== undefined ? overrideUserId : targetUserId;
+
   return useQuery({
-    queryKey: ["profile"],
+    queryKey: profileQueryKey(effectiveUserId),
     queryFn: async () => {
       const supabase = createClient();
+
+      if (effectiveUserId) {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", effectiveUserId)
+          .single();
+        if (error) throw error;
+        return data as Profile;
+      }
+
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -40,10 +60,6 @@ export function useProfile(initialProfile?: Profile) {
     initialData: initialProfile,
     retry: 1,
   });
-}
-
-export function profileQueryKey() {
-  return ["profile"] as const;
 }
 
 export function useProfileActions() {

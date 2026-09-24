@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -18,6 +18,23 @@ export default function LoginPage() {
   const [captchaKey, setCaptchaKey] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const captchaRequired = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
+
+  // Отлавливаем ошибки, переданные через редирект из auth callback
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const callbackError = params.get("error_description") || params.get("error");
+    if (callbackError) {
+      const lower = callbackError.toLowerCase();
+      const message =
+        lower.includes("unsupported") || lower.includes("not enabled") || lower.includes("oauth_failed")
+          ? "Вход через Google не активирован в настройках Supabase. Используйте вход через Email или Гостевой вход."
+          : `Ошибка авторизации: ${callbackError}`;
+      queueMicrotask(() => {
+        setError(message);
+      });
+    }
+  }, []);
 
   // Supabase не настроен — показываем инструкцию, а не падаем
   if (!isSupabaseConfigured()) {
@@ -38,13 +55,37 @@ export default function LoginPage() {
   async function signInWithGoogle() {
     setLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
-    if (error) {
-      setError(error.message);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      timer = setTimeout(() => {
+        setLoading(false);
+        setError("Превышено время ожидания ответа Google. Проверьте сеть или используйте Email / Гостевой вход.");
+      }, 10000);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+
+      if (error) {
+        if (timer) clearTimeout(timer);
+        setLoading(false);
+        const msg = error.message.toLowerCase();
+        if (msg.includes("unsupported") || msg.includes("not enabled") || msg.includes("disabled")) {
+          setError("Google-авторизация не активирована в Supabase. Включите Google Provider в консоли Supabase или используйте Email / Гостевой вход.");
+        } else {
+          setError(error.message);
+        }
+        return;
+      }
+
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      if (timer) clearTimeout(timer);
       setLoading(false);
+      setError(err instanceof Error ? err.message : "Не удалось запустить вход через Google. Попробуйте ещё раз.");
     }
   }
 
