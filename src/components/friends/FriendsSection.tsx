@@ -43,15 +43,19 @@ export function FriendsSection() {
   const [connectSuccess, setConnectSuccess] = useState<string | null>(null);
 
   // 1. Мой код доступа
-  const { data: myCode, isLoading: codeLoading } = useQuery({
+  const { data: myCode, isLoading: codeLoading, error: codeError, refetch: refetchCode } = useQuery({
     queryKey: ["my-friend-code"],
     queryFn: async () => {
       const supabase = createClient();
       const { data, error } = await supabase.rpc("generate_or_get_friend_code");
-      if (error) throw error;
+      if (error) {
+        console.error("Ошибка generate_or_get_friend_code:", error);
+        throw error;
+      }
       return (data ?? "") as string;
     },
     staleTime: 60 * 1000,
+    retry: 1,
   });
 
   // 2. Список друзей (к чьим данным у меня есть доступ)
@@ -221,15 +225,30 @@ export function FriendsSection() {
         </div>
 
         <div className="flex items-center justify-between gap-2 rounded-xl bg-background/90 px-3.5 py-2.5 border border-border">
-          <span className="font-mono text-base font-bold tracking-widest text-primary tabular-nums">
-            {codeLoading ? "CAL-••••-••••" : myCode || "—"}
-          </span>
+          {codeError ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-semibold text-destructive">
+                Код недоступен (миграция БД не применена)
+              </span>
+              <button
+                type="button"
+                onClick={() => refetchCode()}
+                className="text-[11px] text-primary underline text-left hover:text-primary/80 transition-colors"
+              >
+                Повторить попытку
+              </button>
+            </div>
+          ) : (
+            <span className="font-mono text-base font-bold tracking-widest text-primary tabular-nums">
+              {codeLoading ? "CAL-••••-••••" : myCode || "—"}
+            </span>
+          )}
 
           <div className="flex items-center gap-1.5">
             <button
               onClick={handleCopyCode}
               disabled={!myCode}
-              className="btn-glossy spring-press flex items-center gap-1 rounded-lg bg-primary-soft border border-primary/20 px-2.5 py-1 text-xs font-semibold text-primary shadow-2xs hover:bg-primary hover:text-primary-foreground transition-colors"
+              className="btn-glossy spring-press flex items-center gap-1 rounded-lg bg-primary-soft border border-primary/20 px-2.5 py-1 text-xs font-semibold text-primary shadow-2xs hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
               title="Скопировать код"
             >
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -238,16 +257,22 @@ export function FriendsSection() {
             <button
               onClick={handleShareCode}
               disabled={!myCode}
-              className="btn-glossy spring-press flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground border border-border hover:text-foreground transition-colors"
+              className="btn-glossy spring-press flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground border border-border hover:text-foreground transition-colors disabled:opacity-50"
               title="Поделиться кодом"
             >
               <Share2 className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Передайте этот код другу, чтобы он мог просматривать ваш дневник питания, тренировки и динамику веса в режиме чтения.
-        </p>
+        {codeError ? (
+          <p className="text-[11px] text-amber-500/90 leading-relaxed bg-amber-500/10 border border-amber-500/20 rounded-lg p-2">
+            В базе данных Supabase ещё не созданы таблицы друзей. Выполните файл миграции <code className="font-mono font-bold">0006_friend_access.sql</code> в SQL Editor.
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Передайте этот код другу, чтобы он мог просматривать ваш дневник питания, тренировки и динамику веса в режиме чтения.
+          </p>
+        )}
       </div>
 
       {/* Блок 2: Ввести код друга */}
