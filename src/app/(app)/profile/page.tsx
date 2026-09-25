@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Loader2, LogOut, Plus, Scale, TrendingDown, TrendingUp, Minus, Check, ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
@@ -348,6 +349,23 @@ function ProfileFlow() {
           </div>
         </section>
       )}
+
+      {/* Информация о приложении */}
+      <section className="glass-card glossy-sheen mb-4 flex items-center gap-3.5 rounded-3xl p-4 shadow-xs border border-border/50">
+        <div className="relative h-12 w-12 overflow-hidden rounded-2xl shadow-sm border border-primary/20 shrink-0">
+          <Image
+            src="/app-avatar-512.png"
+            alt="CaloriSnap"
+            width={48}
+            height={48}
+            className="h-full w-full object-cover"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold tracking-tight">CaloriSnap</div>
+          <div className="text-xs text-muted-foreground">Версия 0.1.0 · Умный AI-счётчик калорий</div>
+        </div>
+      </section>
 
       {/* Выход / возврат */}
       {isGuestView ? (

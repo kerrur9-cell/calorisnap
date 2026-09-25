@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { UtensilsCrossed, Mail, Loader2 } from "lucide-react";
+import Image from "next/image";
+import { Mail, Loader2 } from "lucide-react";
 import { Captcha } from "@/components/app/Captcha";
 
 export default function LoginPage() {
@@ -147,9 +148,16 @@ export default function LoginPage() {
     <main className="flex min-h-dvh flex-col items-center justify-center bg-background px-6">
       <div className="w-full max-w-sm">
         {/* Лого */}
-        <div className="mb-10 flex flex-col items-center gap-3">
-          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary-soft">
-            <UtensilsCrossed className="h-10 w-10 text-primary" />
+        <div className="mb-8 flex flex-col items-center gap-3">
+          <div className="relative h-24 w-24 overflow-hidden rounded-3xl shadow-xl shadow-primary/15 border border-primary/25 ring-4 ring-primary/5">
+            <Image
+              src="/app-avatar-512.png"
+              alt="CaloriSnap"
+              width={96}
+              height={96}
+              priority
+              className="h-full w-full object-cover"
+            />
           </div>
           <h1 className="text-3xl font-bold tracking-tight">CaloriSnap</h1>
           <p className="text-center text-muted-foreground">

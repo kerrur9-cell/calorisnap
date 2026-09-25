@@ -18,11 +18,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://calorisnap-ai.netlify.app"),
   title: "CaloriSnap",
   description:
     "AI-счётчик калорий. Сфотографируй еду — приложение само всё посчитает.",
   manifest: "/manifest.webmanifest",
-  icons: { apple: "/icons/icon-180.png" },
+  icons: {
+    icon: "/icons/icon-192.png",
+    shortcut: "/favicon.ico",
+    apple: "/icons/icon-180.png",
+  },
+  openGraph: {
+    title: "CaloriSnap",
+    description: "AI-счётчик калорий. Сфотографируй еду — приложение само всё посчитает.",
+    images: ["/app-avatar-512.png"],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
