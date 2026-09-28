@@ -55,5 +55,9 @@ export async function processVideoFrame(
 
 /** Возможность использования камеры */
 export function cameraSupported(): boolean {
-  return typeof navigator !== "undefined" && "mediaDevices" in navigator;
+  return (
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getUserMedia === "function"
+  );
 }
