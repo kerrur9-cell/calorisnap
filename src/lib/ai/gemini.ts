@@ -171,17 +171,35 @@ export async function analyzeFoodPhoto(
 
   let response = await callGemini(body, apiKey, attempt === "secondary" ? GEMINI_FALLBACK_MODEL : GEMINI_PRIMARY_MODEL);
   if (!response.ok && attempt === "primary") {
-    const altKey = process.env.GEMINI_FALLBACK_API_KEY || apiKey;
-    const altModel = GEMINI_FALLBACK_MODEL !== GEMINI_PRIMARY_MODEL ? GEMINI_FALLBACK_MODEL : "gemini-3.6-flash";
-    const altResponse = await callGemini(body, altKey, altModel);
-    if (altResponse.ok) {
-      response = altResponse;
+    const candidateModels = [
+      GEMINI_FALLBACK_MODEL !== GEMINI_PRIMARY_MODEL ? GEMINI_FALLBACK_MODEL : "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-flash-latest",
+    ];
+    const candidateKeys = [process.env.GEMINI_FALLBACK_API_KEY, apiKey].filter((k): k is string => Boolean(k));
+
+    for (const altModel of candidateModels) {
+      for (const altKey of candidateKeys) {
+        if (altModel === GEMINI_PRIMARY_MODEL && altKey === apiKey) continue;
+        const altResponse = await callGemini(body, altKey, altModel);
+        if (altResponse.ok) {
+          response = altResponse;
+          break;
+        }
+      }
+      if (response.ok) break;
     }
   }
 
   if (!response.ok) {
-    if (response.status === 429 || response.status >= 500) {
-      throw new Error("AI временно перегружен. Попробуйте ещё раз через минуту.");
+    if (response.status === 402) {
+      throw new Error("Закончился баланс кредитов Gemini в AI Studio. Пополните баланс или обновите ключ.");
+    }
+    if (response.status === 429) {
+      throw new Error("Исчерпан дневной лимит бесплатных запросов к Gemini (429). Попробуйте чуть позже или добавьте резервный ключ.");
+    }
+    if (response.status >= 500) {
+      throw new Error("Сервера Gemini сейчас перегружены (503). Попробуйте повторить через минуту.");
     }
     throw new Error(response.message);
   }
