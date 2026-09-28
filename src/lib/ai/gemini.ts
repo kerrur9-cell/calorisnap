@@ -16,6 +16,8 @@ export interface AnalyzePhotoInput {
   mimeType: string;
   /** Опциональный вес, введённый пользователем заранее */
   totalWeightGrams?: number;
+  /** Принудительно анализировать как еду (если пользователь подтвердил, что это блюдо) */
+  forceFood?: boolean;
 }
 
 async function fetchWithTimeout(
@@ -85,7 +87,7 @@ export function rebalanceWeights(
   data: AiAnalysisResponse,
   totalWeightGrams?: number,
 ): AiAnalysisResponse {
-  if (!totalWeightGrams || totalWeightGrams <= 0 || data.items.length === 0) {
+  if (!data.is_food || !totalWeightGrams || totalWeightGrams <= 0 || data.items.length === 0) {
     return data;
   }
 
@@ -130,8 +132,13 @@ export async function analyzeFoodPhoto(
     throw new Error("AI не настроен: отсутствует ключ Gemini");
   }
 
-  // Дополняем промпт переданным весом
+  // Дополняем промпт переданным весом или флагом принудительного анализа еды
   let prompt = FOOD_ANALYSIS_PROMPT;
+  if (input.forceFood) {
+    prompt +=
+      `\n\nВАЖНО: Пользователь подтвердил, что на фото ТОЧНО еда или напиток (возможно, необычной формы или подачи). ` +
+      `Обязательно найди съедобные продукты и верни "is_food": true.`;
+  }
   if (input.totalWeightGrams && input.totalWeightGrams > 0) {
     prompt +=
       `\n\nПОЛЬЗОВАТЕЛЬ УКАЗАЛ ОБЩИЙ ВЕС ПОРЦИИ: ${input.totalWeightGrams} г. ` +

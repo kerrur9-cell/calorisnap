@@ -13,12 +13,16 @@ import {
   Scale,
   UtensilsCrossed,
   Lightbulb,
+  Sparkles,
+  Camera,
+  Utensils,
 } from "lucide-react";
 import { CameraCapture } from "@/components/camera/CameraCapture";
 import { ConfidenceBadge } from "@/components/ai/ConfidenceBadge";
 import { createClient } from "@/lib/supabase/client";
 import { macrosForWeight } from "@/lib/nutrition/macros";
-import type { AiAnalysisItem, AiAnalysisResponse } from "@/lib/ai/schema";
+import type { AiAnalysisItem, AiAnalysisResponse, AiAnalysisNonFoodResponse } from "@/lib/ai/schema";
+import { getNonFoodMeta } from "@/lib/ai/nonFoodPhrases";
 import { todayKey } from "@/lib/utils";
 import { dayQueryKey } from "@/hooks/useDayLog";
 import { useQueryClient } from "@tanstack/react-query";
@@ -26,7 +30,7 @@ import { saveMeal } from "@/lib/meals";
 import { resolveMealType, nutritionSchema, weightSchema, foodNameSchema } from "@/lib/validation";
 import { useFriendView } from "@/context/FriendViewContext";
 
-type Stage = "capture" | "analyzing" | "result" | "error";
+type Stage = "capture" | "analyzing" | "result" | "error" | "not_food";
 
 interface PhotoInput {
   dataBase64: string;
@@ -74,7 +78,7 @@ function CameraFlow() {
     return () => window.clearTimeout(timer);
   }, [stage, retryCountdown]);
 
-  async function handleCapture(next: PhotoInput) {
+  async function handleCapture(next: PhotoInput, options?: { forceFood?: boolean }) {
     if (!next.dataBase64) {
       setPhoto(null);
       return;
@@ -93,6 +97,7 @@ function CameraFlow() {
         data: next.dataBase64,
         mime_type: next.mimeType,
         total_weight_grams: weight > 0 ? weight : undefined,
+        force_food: options?.forceFood,
       });
       let res = await fetch("/api/ai/analyze", {
         method: "POST",
@@ -119,8 +124,14 @@ function CameraFlow() {
       }
 
       setResult(json);
+
+      if (json.is_food === false) {
+        setStage("not_food");
+        return;
+      }
+
       setItems(
-        json.items.map((it: AiAnalysisItem, idx: number) =>
+        (json.items || []).map((it: AiAnalysisItem, idx: number) =>
           toEditable(it, idx, weight, json.scale_detected),
         ),
       );
@@ -211,7 +222,7 @@ function CameraFlow() {
     }));
 
     await saveMeal({ id: pendingMeal.current, date: todayKey(), type: mealType,
-      items: rows, photoPath, analysis: result });
+      items: rows, photoPath, analysis: (result as unknown as import("@/types/database").Json) ?? null });
 
     queryClient.invalidateQueries({ queryKey: dayQueryKey(todayKey()) });
     queryClient.invalidateQueries({ queryKey: ["stats"] });
@@ -300,6 +311,16 @@ function CameraFlow() {
         </div>
       )}
 
+      {stage === "not_food" && result && !result.is_food && (
+        <NotFoodStage
+          result={result}
+          photo={photo}
+          mealType={mealType}
+          onRetryCapture={() => setStage("capture")}
+          onForceAnalyze={() => photo && handleCapture(photo, { forceFood: true })}
+        />
+      )}
+
       {stage === "result" && result && (
         <ResultStage
           items={items}
@@ -315,6 +336,105 @@ function CameraFlow() {
       )}
       {stage === "result" && error && <p role="alert" className="mt-4 text-danger">{error}</p>}
     </main>
+  );
+}
+
+/* ============ Подэтап: Не еда (остроумный отказ ИИ) ============ */
+
+function NotFoodStage({
+  result,
+  photo,
+  mealType,
+  onRetryCapture,
+  onForceAnalyze,
+}: {
+  result: AiAnalysisNonFoodResponse;
+  photo: PhotoInput | null;
+  mealType: string;
+  onRetryCapture: () => void;
+  onForceAnalyze: () => void;
+}) {
+  const meta = getNonFoodMeta(result.not_food_reason);
+
+  return (
+    <div className="flex flex-col items-center gap-5 rounded-3xl bg-card border border-border/60 p-6 sm:p-8 text-center shadow-sm animate-in fade-in zoom-in-95 duration-200">
+      {/* Иконка / Эмодзи категории */}
+      <div className="relative">
+        <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary-soft text-4xl shadow-inner select-none">
+          {meta.emoji}
+        </div>
+        <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+          <Sparkles className="h-4 w-4" />
+        </div>
+      </div>
+
+      {/* Заголовок и бейдж */}
+      <div>
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground mb-2">
+          <span>{meta.badge}</span>
+        </div>
+        <h2 className="text-xl font-bold text-foreground">{meta.title}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{meta.subtitle}</p>
+      </div>
+
+      {/* Превью фото */}
+      {photo?.dataBase64 && (
+        <div className="relative overflow-hidden rounded-2xl border-2 border-border shadow-sm max-w-[200px] max-h-[160px]">
+          <img
+            src={`data:${photo.mimeType};base64,${photo.dataBase64}`}
+            alt="Снимок"
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent flex items-end justify-center pb-1.5">
+            <span className="text-[11px] font-medium text-white px-2 py-0.5 rounded-md bg-black/40 backdrop-blur-xs">
+              Ваш снимок
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Остроумный ответ нейросети */}
+      <div className="w-full rounded-2xl bg-primary-soft/60 border border-primary/20 p-4 sm:p-5 text-left shadow-xs">
+        <div className="flex items-center gap-1.5 mb-1.5 text-xs font-semibold text-primary">
+          <Sparkles className="h-3.5 w-3.5 shrink-0" />
+          <span>CaloriSnap AI:</span>
+        </div>
+        <p className="text-sm sm:text-base font-medium text-foreground leading-relaxed">
+          «{result.funny_response}»
+        </p>
+      </div>
+
+      {/* Подсказка */}
+      <div className="rounded-2xl bg-muted/50 p-3 text-xs text-muted-foreground w-full">
+        💡 Приложение считает калории только для еды и напитков. Сфотографируйте вашу тарелку или перекус!
+      </div>
+
+      {/* Кнопки действий */}
+      <div className="flex flex-col w-full gap-2.5 pt-1">
+        <button
+          onClick={onRetryCapture}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
+        >
+          <Camera className="h-4 w-4" />
+          Сфотографировать еду
+        </button>
+
+        <Link
+          href={{ pathname: "/foods", query: { meal: mealType } }}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-muted py-3 text-sm font-medium text-foreground hover:bg-muted/80 transition-all"
+        >
+          <Utensils className="h-4 w-4" />
+          Добавить блюдо вручную
+        </Link>
+
+        <button
+          onClick={onForceAnalyze}
+          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 py-1.5 transition-colors"
+        >
+          Это точно еда? Всё равно распознать как блюдо
+        </button>
+      </div>
+    </div>
   );
 }
 

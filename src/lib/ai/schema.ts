@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  normalizeNonFoodReason,
+  getRandomNonFoodResponse,
+  type NonFoodReason,
+} from "./nonFoodPhrases";
+
+export type { NonFoodReason } from "./nonFoodPhrases";
 
 /**
  * Проверяет структуру и диапазоны. Фактическую точность оценки фото
@@ -48,7 +55,7 @@ const aiAnalysisItemSchema = z.object({
   notes: z.string().optional().default(""),
 });
 
-const aiAnalysisResponseSchema = z.object({
+const aiAnalysisFoodSchema = z.object({
   items: z.array(aiAnalysisItemSchema).min(1).max(30),
   total_weight_grams: numToken(5000).optional(),
   scale_detected: booleanToken,
@@ -63,18 +70,44 @@ const aiAnalysisResponseSchema = z.object({
   const warnings = [...value.warnings];
   if (Math.abs(itemsTotal - totalWeight) > Math.max(3, value.items.length * 3)) {
     warnings.push("AI вернул несовпадающую сумму весов, поэтому итоговый вес пересчитан по продуктам.");
-    return { ...value, total_weight_grams: itemsTotal, warnings };
+    return { ...value, is_food: true as const, total_weight_grams: itemsTotal, warnings };
   }
-  return { ...value, total_weight_grams: totalWeight };
+  return { ...value, is_food: true as const, total_weight_grams: totalWeight };
 });
 
-export type AiAnalysisResponse = z.infer<typeof aiAnalysisResponseSchema>;
 export type AiAnalysisItem = z.infer<typeof aiAnalysisItemSchema>;
+
+export interface AiAnalysisFoodResponse {
+  is_food: true;
+  not_food_reason?: undefined;
+  funny_response?: string;
+  items: AiAnalysisItem[];
+  total_weight_grams?: number;
+  scale_detected: boolean;
+  scale_reading?: number | null;
+  overall_confidence: number;
+  warnings: string[];
+}
+
+export interface AiAnalysisNonFoodResponse {
+  is_food: false;
+  not_food_reason: NonFoodReason;
+  funny_response: string;
+  items: AiAnalysisItem[];
+  total_weight_grams: number;
+  scale_detected: boolean;
+  scale_reading: null;
+  overall_confidence: number;
+  warnings: string[];
+}
+
+export type AiAnalysisResponse = AiAnalysisFoodResponse | AiAnalysisNonFoodResponse;
 
 /** Нормализация «мусорного» JSON от модели в безопасный вид */
 export function safeParseAnalysis(
   raw: unknown,
 ): { ok: true; data: AiAnalysisResponse } | { ok: false; error: string } {
+  let parsedRaw = raw;
   if (typeof raw === "string") {
     try {
       const json = raw.trim()
@@ -83,13 +116,75 @@ export function safeParseAnalysis(
         .trim();
       const firstBrace = json.indexOf("{");
       const lastBrace = json.lastIndexOf("}");
-      raw = JSON.parse(firstBrace >= 0 && lastBrace > firstBrace ? json.slice(firstBrace, lastBrace + 1) : json);
+      parsedRaw = JSON.parse(firstBrace >= 0 && lastBrace > firstBrace ? json.slice(firstBrace, lastBrace + 1) : json);
     } catch {
+      // Если модель вернула не-JSON текст, но прямо указала на несъедобность (человек, кот, предмет)
+      const text = raw.trim();
+      const textLower = text.toLowerCase();
+      if (
+        textLower.includes("человек") ||
+        textLower.includes("лицо") ||
+        textLower.includes("селфи") ||
+        textLower.includes("не еда") ||
+        textLower.includes("не является едой") ||
+        textLower.includes("кот") ||
+        textLower.includes("собак") ||
+        textLower.includes("питом") ||
+        textLower.includes("гаджет") ||
+        textLower.includes("телефон")
+      ) {
+        const reason = normalizeNonFoodReason(text);
+        const funny_response = text.length <= 300 && !text.includes("{") ? text : getRandomNonFoodResponse(reason);
+        return {
+          ok: true,
+          data: {
+            is_food: false,
+            not_food_reason: reason,
+            funny_response,
+            items: [],
+            total_weight_grams: 0,
+            scale_detected: false,
+            scale_reading: null,
+            overall_confidence: 0,
+            warnings: [],
+          },
+        };
+      }
       return { ok: false, error: "Модель вернула не-JSON ответ" };
     }
   }
 
-  const result = aiAnalysisResponseSchema.safeParse(raw);
+  // Проверяем, вернула ли модель явный отказ (не еда)
+  if (parsedRaw && typeof parsedRaw === "object") {
+    const rawObj = parsedRaw as Record<string, unknown>;
+    const isExplicitlyNonFood =
+      rawObj.is_food === false ||
+      rawObj.is_food === "false" ||
+      (rawObj.items && Array.isArray(rawObj.items) && rawObj.items.length === 0 && (rawObj.not_food_reason || rawObj.funny_response));
+
+    if (isExplicitlyNonFood) {
+      const reason = normalizeNonFoodReason(rawObj.not_food_reason);
+      const customResponse = typeof rawObj.funny_response === "string" ? rawObj.funny_response.trim() : "";
+      const funny_response = customResponse || getRandomNonFoodResponse(reason);
+      return {
+        ok: true,
+        data: {
+          is_food: false,
+          not_food_reason: reason,
+          funny_response,
+          items: [],
+          total_weight_grams: 0,
+          scale_detected: false,
+          scale_reading: null,
+          overall_confidence: 0,
+          warnings: Array.isArray(rawObj.warnings) ? (rawObj.warnings as string[]) : [],
+        },
+      };
+    }
+  }
+
+  // Обычный анализ еды
+  const result = aiAnalysisFoodSchema.safeParse(parsedRaw);
   if (!result.success) {
     const first = result.error.issues[0];
     return {

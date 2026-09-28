@@ -9,6 +9,9 @@ export async function analyzeFoodPhotoWithGroq(input: AnalyzePhotoInput): Promis
   const key = process.env.GROQ_API_KEY;
   if (!key) throw new Error("Резервный анализ фото не настроен");
 
+  const forceFoodInstruction = input.forceFood
+    ? "\n\nПользователь подтвердил, что на фото точно еда. Обязательно распознай продукты и верни is_food: true."
+    : "";
   const weightInstruction = input.totalWeightGrams
     ? `\n\nПользователь указал общий вес порции: ${input.totalWeightGrams} г. Распредели его по видимым продуктам.`
     : "";
@@ -20,7 +23,7 @@ export async function analyzeFoodPhotoWithGroq(input: AnalyzePhotoInput): Promis
       body: JSON.stringify({
         model: VISION_MODEL,
         messages: [{ role: "user", content: [
-          { type: "text", text: GROQ_FOOD_ANALYSIS_PROMPT + weightInstruction },
+          { type: "text", text: GROQ_FOOD_ANALYSIS_PROMPT + forceFoodInstruction + weightInstruction },
           { type: "image_url", image_url: { url: `data:${input.mimeType};base64,${input.dataBase64}` } },
         ] }],
         response_format: { type: "json_object" },

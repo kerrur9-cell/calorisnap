@@ -28,7 +28,7 @@ describe("AI request boundary", () => {
   });
   it("sends validated input after authentication", async () => {
     expect((await POST(request(body))).status).toBe(200);
-    expect(mocks.analyze).toHaveBeenCalledWith({ dataBase64: body.data, mimeType: "image/jpeg", totalWeightGrams: undefined }, "primary");
+    expect(mocks.analyze).toHaveBeenCalledWith({ dataBase64: body.data, mimeType: "image/jpeg", totalWeightGrams: undefined, forceFood: undefined }, "primary");
   });
   it("offers the second key only after a failed first analysis", async () => {
     vi.stubEnv("GEMINI_FALLBACK_API_KEY", "test-key");
@@ -37,6 +37,33 @@ describe("AI request boundary", () => {
     expect((await first.json()).retryable).toBe(true);
     const second = await POST(request(body, undefined, true));
     expect((await second.json()).retryable).toBe(false);
-    expect(mocks.analyze).toHaveBeenLastCalledWith({ dataBase64: body.data, mimeType: "image/jpeg", totalWeightGrams: undefined }, "secondary");
+    expect(mocks.analyze).toHaveBeenLastCalledWith({ dataBase64: body.data, mimeType: "image/jpeg", totalWeightGrams: undefined, forceFood: undefined }, "secondary");
+  });
+  it("passes force_food parameter to analyzer", async () => {
+    expect((await POST(request({ ...body, force_food: true }))).status).toBe(200);
+    expect(mocks.analyze).toHaveBeenCalledWith(
+      { dataBase64: body.data, mimeType: "image/jpeg", totalWeightGrams: undefined, forceFood: true },
+      "primary",
+    );
+  });
+  it("delivers witty non-food rejection cleanly with status 200 without retrying", async () => {
+    const nonFoodResult = {
+      is_food: false,
+      not_food_reason: "person",
+      funny_response: "Эй, это кажется вы! Людей мы не едим 😉",
+      items: [],
+      total_weight_grams: 0,
+      scale_detected: false,
+      scale_reading: null,
+      overall_confidence: 0,
+      warnings: [],
+    };
+    mocks.analyze.mockResolvedValue(nonFoodResult);
+    const res = await POST(request(body));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.is_food).toBe(false);
+    expect(data.not_food_reason).toBe("person");
+    expect(data.funny_response).toContain("кажется вы");
   });
 });

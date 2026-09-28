@@ -14,6 +14,7 @@ interface AnalyzeRequest {
   data: string;
   mime_type?: string;
   total_weight_grams?: number;
+  force_food?: boolean;
 }
 
 async function analyzeRequest(request: NextRequest) {
@@ -40,6 +41,7 @@ async function analyzeRequest(request: NextRequest) {
       data: z.string().min(4).regex(/^[A-Za-z0-9+/]+={0,2}$/),
       mime_type: z.enum(["image/jpeg", "image/png", "image/webp"]).default("image/jpeg"),
       total_weight_grams: z.number().finite().positive().max(5000).optional(),
+      force_food: z.boolean().optional(),
     }).parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
   } catch {
     return NextResponse.json({ error: "Невалидный JSON" }, { status: 400 });
@@ -79,6 +81,7 @@ async function analyzeRequest(request: NextRequest) {
       dataBase64,
       mimeType,
       totalWeightGrams,
+      forceFood: body.force_food,
     };
     const result = attempt === "tertiary"
       ? await analyzeFoodPhotoWithGroq(input)
