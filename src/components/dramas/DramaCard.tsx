@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Star, Play, Sparkles, Film, CheckCircle2 } from "lucide-react";
+import { Star, Play, Sparkles, Film, CheckCircle2, Minimize2 } from "lucide-react";
 import type { Drama } from "@/lib/dramas/types";
 import { useToggleFavorite } from "@/hooks/useDramas";
+import { useDramaPlayer } from "@/context/DramaPlayerContext";
 
 interface DramaCardProps {
   drama: Drama;
@@ -12,6 +13,10 @@ interface DramaCardProps {
 
 export function DramaCard({ drama, onPlayClick }: DramaCardProps) {
   const toggleFav = useToggleFavorite();
+  const { isDramaCompleted, getWatchedCount, openMiniPlayer } = useDramaPlayer();
+
+  const completed = isDramaCompleted(drama) || drama.progress?.isCompleted;
+  const watchedCount = getWatchedCount(drama.id);
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -21,6 +26,8 @@ export function DramaCard({ drama, onPlayClick }: DramaCardProps) {
 
   const progressPercent = drama.progress
     ? Math.min(100, Math.round((drama.progress.lastEpisodeNumber / Math.max(1, drama.totalEpisodes)) * 100))
+    : completed
+    ? 100
     : 0;
 
   return (
@@ -95,25 +102,23 @@ export function DramaCard({ drama, onPlayClick }: DramaCardProps) {
             {drama.totalEpisodes} серий
           </span>
 
-          {drama.progress && (
-            <span className="inline-flex items-center gap-1 rounded-lg bg-primary/90 px-2 py-0.5 text-[11px] font-bold text-primary-foreground backdrop-blur-md">
-              {drama.progress.isCompleted ? (
-                <>
-                  <CheckCircle2 className="h-3 w-3" />
-                  Просмотрено
-                </>
-              ) : (
-                `Серия ${drama.progress.lastEpisodeNumber}`
-              )}
+          {completed ? (
+            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-600/90 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur-md shadow-sm">
+              <CheckCircle2 className="h-3 w-3" />
+              Просмотрено
             </span>
-          )}
+          ) : watchedCount > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-lg bg-primary/90 px-2 py-0.5 text-[11px] font-bold text-primary-foreground backdrop-blur-md shadow-sm">
+              Серия {watchedCount}/{drama.totalEpisodes}
+            </span>
+          ) : null}
         </div>
 
         {/* Прогресс-бар просмотра */}
-        {drama.progress && progressPercent > 0 && (
+        {progressPercent > 0 && (
           <div className="absolute bottom-0 inset-x-0 h-1 bg-white/20">
             <div
-              className="h-full bg-primary transition-all duration-300"
+              className={`h-full transition-all duration-300 ${completed ? "bg-emerald-500" : "bg-primary"}`}
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -151,11 +156,40 @@ export function DramaCard({ drama, onPlayClick }: DramaCardProps) {
           ))}
         </div>
 
-        {/* Кнопка "Смотреть" */}
-        <div className="mt-3.5 pt-2 border-t border-border/40 flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">
-            {drama.progress ? "Продолжить" : "Начать"}
-          </span>
+        {/* Кнопка "Смотреть" и "В окне" */}
+        <div className="mt-3.5 pt-2 border-t border-border/40 flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const firstEp = drama.episodes?.[0] || {
+                id: `ep-${drama.id}-1`,
+                dramaId: drama.id,
+                episodeNumber: 1,
+                title: `${drama.title} - Серия 1`,
+                videoId: drama.coverUrl.split("/vi/")[1]?.split("/")[0] || "PSKjllWGG0E",
+                sourcePlatform: "youtube",
+                durationSeconds: 1200,
+                thumbnailUrl: drama.coverUrl,
+                isAvailable: true,
+                createdAt: drama.createdAt,
+              };
+              openMiniPlayer({
+                key: `${drama.id}_ep_${firstEp.episodeNumber}`,
+                drama,
+                episode: firstEp,
+                episodeNumber: firstEp.episodeNumber,
+                totalEpisodesInDrama: drama.totalEpisodes,
+              });
+            }}
+            className="inline-flex items-center gap-1 rounded-xl bg-violet-600/15 hover:bg-violet-600/25 text-violet-400 border border-violet-500/30 px-2 py-1 text-xs font-bold transition-all active:scale-95"
+            title="Смотреть в плавающем окне"
+          >
+            <Minimize2 className="h-3 w-3" />
+            <span>В окне</span>
+          </button>
+
           <Link
             href={`/dramas/${drama.id}`}
             onClick={(e) => {
@@ -167,7 +201,7 @@ export function DramaCard({ drama, onPlayClick }: DramaCardProps) {
             className="inline-flex items-center gap-1 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1 text-xs font-bold transition-all active:scale-95"
           >
             <Play className="h-3 w-3 fill-current" />
-            {drama.progress ? `С ${drama.progress.lastEpisodeNumber} серии` : "Смотреть"}
+            {completed ? "Заново" : watchedCount > 0 ? `С ${watchedCount + 1} сер.` : "Смотреть"}
           </Link>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { X, Play, CheckCircle2, Film } from "lucide-react";
 import type { DramaEpisode } from "@/lib/dramas/types";
+import { useDramaPlayer } from "@/context/DramaPlayerContext";
 
 interface EpisodePickerDrawerProps {
   isOpen: boolean;
@@ -22,6 +23,8 @@ export function EpisodePickerDrawer({
   lastWatchedEpisodeNumber = 0,
   onSelectEpisode,
 }: EpisodePickerDrawerProps) {
+  const { isWatched: checkWatched, markWatched } = useDramaPlayer();
+
   if (!isOpen) return null;
 
   return (
@@ -88,63 +91,84 @@ export function EpisodePickerDrawer({
         <div className="flex-1 overflow-y-auto divide-y divide-border/40 py-2 space-y-1">
           {episodes.map((ep) => {
             const isCurrent = ep.episodeNumber === currentEpisodeNumber;
-            const isWatched = ep.episodeNumber <= lastWatchedEpisodeNumber && !isCurrent;
+            const isWatched = checkWatched(ep.dramaId, ep.episodeNumber) || (ep.episodeNumber <= lastWatchedEpisodeNumber && !isCurrent);
 
             return (
-              <button
+              <div
                 key={ep.id}
-                type="button"
-                onClick={() => {
-                  onSelectEpisode(ep);
-                  onClose();
-                }}
-                className={`w-full flex items-center gap-3 p-2.5 rounded-2xl text-left transition-all active:scale-[0.98] ${
+                className={`w-full flex items-center justify-between gap-2 p-2 rounded-2xl transition-all ${
                   isCurrent
                     ? "bg-primary/15 border border-primary/40 text-foreground"
                     : "hover:bg-muted/40 text-foreground"
                 }`}
               >
-                {/* Превью / иконка серии */}
-                <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-xl bg-muted/60 border border-border/50">
-                  {ep.thumbnailUrl ? (
-                    <img
-                      src={ep.thumbnailUrl}
-                      alt={ep.title}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                      <Film className="h-5 w-5" />
-                    </div>
-                  )}
-                  {isCurrent && (
-                    <div className="absolute inset-0 bg-primary/40 flex items-center justify-center">
-                      <Play className="h-5 w-5 fill-white text-white animate-pulse" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Инфо серии */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-xs truncate">
-                      {ep.title}
-                    </span>
-                    {isWatched && (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectEpisode(ep);
+                    onClose();
+                  }}
+                  className="flex-1 flex items-center gap-3 text-left min-w-0"
+                >
+                  {/* Превью / иконка серии */}
+                  <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-xl bg-muted/60 border border-border/50">
+                    {ep.thumbnailUrl ? (
+                      <img
+                        src={ep.thumbnailUrl}
+                        alt={ep.title}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                        <Film className="h-5 w-5" />
+                      </div>
+                    )}
+                    {isCurrent && (
+                      <div className="absolute inset-0 bg-primary/40 flex items-center justify-center">
+                        <Play className="h-5 w-5 fill-white text-white animate-pulse" />
+                      </div>
                     )}
                   </div>
-                  {ep.description && (
-                    <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
-                      {ep.description}
-                    </p>
-                  )}
-                  <span className="inline-block mt-1 text-[10px] text-muted-foreground/80 font-medium">
-                    Серия {ep.episodeNumber}
-                  </span>
-                </div>
-              </button>
+
+                  {/* Инфо серии */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-xs truncate">
+                        {ep.title}
+                      </span>
+                      {isWatched && (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                      )}
+                    </div>
+                    {ep.description && (
+                      <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
+                        {ep.description}
+                      </p>
+                    )}
+                    <span className="inline-block mt-0.5 text-[10px] text-muted-foreground/80 font-medium">
+                      Серия {ep.episodeNumber}
+                    </span>
+                  </div>
+                </button>
+
+                {/* Быстрая кнопка отметки просмотренного */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    markWatched(ep.dramaId, ep.episodeNumber, !isWatched);
+                  }}
+                  className={`shrink-0 p-2 rounded-xl transition-colors ${
+                    isWatched
+                      ? "text-emerald-500 hover:text-emerald-600"
+                      : "text-muted-foreground/40 hover:text-foreground"
+                  }`}
+                  title={isWatched ? "Снять отметку" : "Отметить как просмотренное"}
+                >
+                  <CheckCircle2 className={`h-4 w-4 ${isWatched ? "fill-emerald-500 text-white" : ""}`} />
+                </button>
+              </div>
             );
           })}
         </div>

@@ -9,11 +9,13 @@ import {
   Play,
   RotateCcw,
   Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import { useDramas, useSyncDramas } from "@/hooks/useDramas";
 import { DramaCard } from "@/components/dramas/DramaCard";
 import { DramaFilters } from "@/components/dramas/DramaFilters";
 import { DramaFeed } from "@/components/dramas/DramaFeed";
+import { useDramaPlayer } from "@/context/DramaPlayerContext";
 import type { Drama } from "@/lib/dramas/types";
 
 type ViewMode = "feed" | "catalog";
@@ -21,14 +23,22 @@ type ViewMode = "feed" | "catalog";
 export default function DramasPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("feed");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTag, setActiveTag] = useState("AI-сериалы");
+  const [activeTag, setActiveTag] = useState("Все");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const [hideWatched, setHideWatched] = useState(false);
   const [selectedDramaForFeed, setSelectedDramaForFeed] = useState<string | undefined>();
 
-  const { data: dramas, isLoading, refetch } = useDramas({
+  const { isDramaCompleted } = useDramaPlayer();
+
+  const { data: rawDramas, isLoading, refetch } = useDramas({
     query: searchQuery,
     tag: activeTag,
     favoriteOnly,
+  });
+
+  const dramas = rawDramas?.filter((d) => {
+    if (hideWatched && isDramaCompleted(d)) return false;
+    return true;
   });
 
   const syncDramas = useSyncDramas();
@@ -112,6 +122,22 @@ export default function DramasPage() {
           >
             <Sparkles className="h-3 w-3" />
             Все AI-сериалы
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setHideWatched((prev) => !prev);
+            }}
+            className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
+              hideWatched
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "bg-muted/80 text-muted-foreground hover:text-foreground"
+            }`}
+            title="Скрыть уже просмотренные сериалы"
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            {hideWatched ? "Только новые" : "Скрыть просмотренные"}
           </button>
 
           <button
@@ -225,9 +251,23 @@ export default function DramasPage() {
 
           {/* Строка состояния каталога и кнопка синхронизации */}
           <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-            <span>
-              Найдено: <strong className="text-foreground">{dramas?.length ?? 0}</strong>
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span>
+                Каталог: <strong className="text-foreground">{dramas?.length ?? 0}</strong> AI-сериалов
+              </span>
+              <button
+                type="button"
+                onClick={() => setHideWatched((prev) => !prev)}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all ${
+                  hideWatched
+                    ? "bg-emerald-600 text-white"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                {hideWatched ? "Только новые" : "Скрыть просмотренные"}
+              </button>
+            </div>
 
             <button
               type="button"

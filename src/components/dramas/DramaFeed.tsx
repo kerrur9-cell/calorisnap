@@ -15,10 +15,14 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  Minimize2,
+  Shuffle,
+  CheckCircle2,
 } from "lucide-react";
 import type { Drama, DramaEpisode } from "@/lib/dramas/types";
 import { EpisodePickerDrawer } from "./EpisodePickerDrawer";
 import { useSaveDramaProgress, useToggleFavorite } from "@/hooks/useDramas";
+import { useDramaPlayer } from "@/context/DramaPlayerContext";
 
 export interface FeedItem {
   key: string;
@@ -50,14 +54,42 @@ export function DramaFeed({
   const saveProgress = useSaveDramaProgress();
   const toggleFavorite = useToggleFavorite();
 
-  // Разворачиваем все сериалы в единую последовательную ленту эпизодов (TikTok-формат)
+  const {
+    isWatched,
+    markWatched,
+    openMiniPlayer,
+    startBackgroundAudio,
+    shuffleDramas,
+  } = useDramaPlayer();
+
+  // Рандомизированный порядок сериалов (непросмотренные идут случайно первыми)
+  const [dramasSequence, setDramasSequence] = useState<Drama[]>(() =>
+    shuffleDramas(initialDramas)
+  );
+
+  // Обновляем последовательность при смене initialDramas
+  useEffect(() => {
+    setDramasSequence(shuffleDramas(initialDramas));
+  }, [initialDramas, shuffleDramas]);
+
+  // Ручное перемешивание ленты ("🔀 Перемешать")
+  const handleShuffleClick = useCallback(() => {
+    const next = shuffleDramas(initialDramas);
+    setDramasSequence(next);
+    setActiveIndex(0);
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [initialDramas, shuffleDramas]);
+
+  // Разворачиваем сериалы в единую последовательную ленту эпизодов (TikTok-формат)
+  // Внутри каждого сериала серии идут строго по порядку: 1 -> 2 -> ... -> N
   const feedItems: FeedItem[] = useMemo(() => {
     const list: FeedItem[] = [];
-    for (const drama of initialDramas) {
+    for (const drama of dramasSequence) {
       const eps = drama.episodes || [];
       if (eps.length === 0) continue;
 
-      // Сортируем серии строго по порядку 1 -> 2 -> 3...
       const sortedEps = [...eps].sort((a, b) => a.episodeNumber - b.episodeNumber);
       for (const ep of sortedEps) {
         list.push({
@@ -70,9 +102,9 @@ export function DramaFeed({
       }
     }
     return list;
-  }, [initialDramas]);
+  }, [dramasSequence]);
 
-  // Вычисляем стартовый индекс при открытии (например, сохранённый прогресс или выбранный сериал)
+  // Вычисляем стартовый индекс при открытии (например, выбранный сериал)
   useEffect(() => {
     if (feedItems.length === 0) return;
 
@@ -86,21 +118,10 @@ export function DramaFeed({
         return true;
       });
       if (foundIdx >= 0) targetIdx = foundIdx;
-    } else {
-      // Ищем сериал с активным прогрессом
-      const progressIdx = feedItems.findIndex((it) => {
-        return (
-          it.drama.progress &&
-          it.drama.progress.lastEpisodeNumber === it.episodeNumber &&
-          !it.drama.progress.isCompleted
-        );
-      });
-      if (progressIdx >= 0) targetIdx = progressIdx;
     }
 
     setActiveIndex(targetIdx);
 
-    // Мягко прокручиваем к стартовому элементу
     if (containerRef.current && targetIdx > 0) {
       const targetElem = itemRefs.current[targetIdx];
       if (targetElem) {
@@ -109,21 +130,26 @@ export function DramaFeed({
     }
   }, [initialDramaId, initialEpisodeNumber, feedItems]);
 
-  // Следим за скроллом и определяем активную видимую серию через scroll-событие
+  // Следим за скроллом и определяем активную серию
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
     const { scrollTop, clientHeight } = containerRef.current;
     if (clientHeight === 0) return;
 
-    // Вычисляем текущий индекс по высоте скролла
     const newIndex = Math.round(scrollTop / clientHeight);
     if (newIndex >= 0 && newIndex < feedItems.length && newIndex !== activeIndex) {
       setActiveIndex(newIndex);
       if (showSwipeHint) setShowSwipeHint(false);
 
+      // Фоновое аудио keepalive
+      startBackgroundAudio();
+
       // Сохраняем прогресс текущего сериала
       const activeItem = feedItems[newIndex];
       if (activeItem) {
+        // Умный трекер: автоматически фиксируем просмотр через 4 секунды
+        markWatched(activeItem.drama.id, activeItem.episodeNumber, true);
+
         saveProgress.mutate({
           dramaId: activeItem.drama.id,
           episodeId: activeItem.episode.id,
@@ -131,7 +157,7 @@ export function DramaFeed({
         });
       }
     }
-  }, [activeIndex, feedItems, saveProgress, showSwipeHint]);
+  }, [activeIndex, feedItems, saveProgress, showSwipeHint, startBackgroundAudio, markWatched]);
 
   // Прокрутка к следующему видео
   const scrollToNext = useCallback(() => {
@@ -170,7 +196,7 @@ export function DramaFeed({
     if (navigator.share) {
       navigator.share({
         title: item.drama.title,
-        text: `Смотри сериал "${item.drama.title}" в CaloriSnap!`,
+        text: `Смотри китайский AI-сериал "${item.drama.title}" в CaloriSnap!`,
         url,
       }).catch(() => {});
     } else {
@@ -195,6 +221,19 @@ export function DramaFeed({
 
   return (
     <div className="relative w-full h-[calc(100dvh-12.5rem)] min-h-[480px] max-h-[820px] rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/10 select-none">
+      {/* Кнопка случайного перемешивания вверху слева */}
+      <div className="absolute top-3 left-3 z-30 pointer-events-auto">
+        <button
+          type="button"
+          onClick={handleShuffleClick}
+          className="inline-flex items-center gap-1.5 rounded-full bg-black/60 border border-white/20 px-3 py-1 text-[11px] font-bold text-white shadow-lg backdrop-blur-md hover:bg-black/80 active:scale-95 transition-all"
+          title="Случайно перемешать порядок сборников"
+        >
+          <Shuffle className="h-3 w-3 text-violet-400" />
+          <span>Перемешать</span>
+        </button>
+      </div>
+
       {/* Вертикальный TikTok-контейнер со строгим scroll-snap */}
       <div
         ref={containerRef}
@@ -207,8 +246,8 @@ export function DramaFeed({
       >
         {feedItems.map((item, idx) => {
           const isActive = idx === activeIndex;
-          // Рендерим iframe только для активной серии и соседних, чтобы не перегружать сеть и память
           const shouldMountVideo = Math.abs(idx - activeIndex) <= 1;
+          const watched = isWatched(item.drama.id, item.episodeNumber);
 
           return (
             <div
@@ -231,7 +270,10 @@ export function DramaFeed({
                   item={item}
                   isActive={isActive}
                   isMuted={isMuted}
-                  onEnded={scrollToNext}
+                  onEnded={() => {
+                    markWatched(item.drama.id, item.episodeNumber, true);
+                    scrollToNext();
+                  }}
                 />
               ) : (
                 <div className="flex flex-col items-center gap-2 text-white/70">
@@ -245,15 +287,15 @@ export function DramaFeed({
               <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-none" />
 
               {/* Правая плавающая панель кнопок (TikTok Style) */}
-              <div className="absolute right-3 bottom-8 z-30 flex flex-col items-center gap-3.5 pointer-events-auto">
-                {/* Аватар / Постер сериала с градиентным вращением */}
+              <div className="absolute right-3 bottom-8 z-30 flex flex-col items-center gap-3 pointer-events-auto">
+                {/* Аватар / Постер сериала */}
                 <button
                   type="button"
                   onClick={() => setIsDrawerOpen(true)}
                   className="relative group active:scale-90 transition-transform"
                   aria-label="Все серии"
                 >
-                  <div className="h-11 w-11 rounded-full p-0.5 bg-gradient-to-tr from-violet-600 via-primary to-fuchsia-500 shadow-xl">
+                  <div className="h-10 w-10 rounded-full p-0.5 bg-gradient-to-tr from-violet-600 via-primary to-fuchsia-500 shadow-xl">
                     <img
                       src={item.drama.coverUrl}
                       alt={item.drama.title}
@@ -265,6 +307,44 @@ export function DramaFeed({
                   </span>
                 </button>
 
+                {/* Кнопка "В окне" (Floating Picture-in-Picture Mini-Player) */}
+                <button
+                  type="button"
+                  onClick={() => openMiniPlayer(item)}
+                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  aria-label="Смотреть в окне"
+                  title="Смотреть в окне и пользоваться сайтом"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-600/80 border border-violet-400/50 text-white backdrop-blur-md shadow-lg hover:bg-violet-600">
+                    <Minimize2 className="h-4.5 w-4.5" />
+                  </span>
+                  <span className="text-[10px] font-bold text-white drop-shadow-md">
+                    В окне
+                  </span>
+                </button>
+
+                {/* Умный трекер: Отметка просмотренного */}
+                <button
+                  type="button"
+                  onClick={() => markWatched(item.drama.id, item.episodeNumber, !watched)}
+                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  aria-label={watched ? "Отмечено как просмотрено" : "Отметить просмотренным"}
+                  title={watched ? "Снять отметку" : "Отметить как просмотренное"}
+                >
+                  <span
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border backdrop-blur-md shadow-lg transition-all ${
+                      watched
+                        ? "bg-emerald-600/90 border-emerald-400/60 text-white"
+                        : "bg-black/60 border-white/20 text-white/70 hover:text-white"
+                    }`}
+                  >
+                    <CheckCircle2 className="h-4.5 w-4.5" />
+                  </span>
+                  <span className="text-[9px] font-bold text-white drop-shadow-md">
+                    {watched ? "Просмотрено" : "Отметить"}
+                  </span>
+                </button>
+
                 {/* Кнопка "В закладки / Избранное" */}
                 <button
                   type="button"
@@ -272,15 +352,15 @@ export function DramaFeed({
                   className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
                   aria-label={item.drama.isFavorite ? "В избранном" : "В закладки"}
                 >
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
                     <Star
-                      className={`h-5 w-5 transition-colors ${
+                      className={`h-4.5 w-4.5 transition-colors ${
                         item.drama.isFavorite ? "fill-amber-400 text-amber-400" : "text-white"
                       }`}
                     />
                   </span>
                   <span className="text-[10px] font-bold text-white drop-shadow-md">
-                    {item.drama.isFavorite ? "Сохранено" : "В закладки"}
+                    {item.drama.isFavorite ? "В избранном" : "Закладка"}
                   </span>
                 </button>
 
@@ -291,8 +371,8 @@ export function DramaFeed({
                   className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
                   aria-label="Список серий"
                 >
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
-                    <ListVideo className="h-5 w-5" />
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
+                    <ListVideo className="h-4.5 w-4.5" />
                   </span>
                   <span className="text-[10px] font-bold text-white drop-shadow-md">
                     Серии
@@ -306,15 +386,15 @@ export function DramaFeed({
                   className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
                   aria-label={isMuted ? "Включить звук" : "Выключить звук"}
                 >
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
                     {isMuted ? (
-                      <VolumeX className="h-5 w-5 text-amber-400" />
+                      <VolumeX className="h-4.5 w-4.5 text-amber-400" />
                     ) : (
-                      <Volume2 className="h-5 w-5" />
+                      <Volume2 className="h-4.5 w-4.5" />
                     )}
                   </span>
                   <span className="text-[10px] font-bold text-white drop-shadow-md">
-                    {isMuted ? "Звук выкл" : "Звук"}
+                    {isMuted ? "Без звука" : "Звук"}
                   </span>
                 </button>
 
@@ -325,11 +405,11 @@ export function DramaFeed({
                   className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
                   aria-label="Поделиться сериалом"
                 >
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
                     {copiedLink ? (
-                      <Check className="h-5 w-5 text-emerald-400" />
+                      <Check className="h-4.5 w-4.5 text-emerald-400" />
                     ) : (
-                      <Share2 className="h-5 w-5" />
+                      <Share2 className="h-4.5 w-4.5" />
                     )}
                   </span>
                   <span className="text-[10px] font-bold text-white drop-shadow-md">
@@ -338,65 +418,63 @@ export function DramaFeed({
                 </button>
 
                 {/* Стрелки быстрой навигации вверх/вниз */}
-                <div className="flex flex-col gap-1.5 pt-1">
+                <div className="flex flex-col gap-1 pt-0.5">
                   {idx > 0 && (
                     <button
                       type="button"
                       onClick={scrollToPrev}
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 border border-white/15 text-white/80 hover:text-white backdrop-blur-md active:scale-90 transition-all"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/50 border border-white/15 text-white/80 hover:text-white backdrop-blur-md active:scale-90 transition-all"
                       aria-label="Предыдущая серия"
                     >
-                      <ChevronUp className="h-4 w-4" />
+                      <ChevronUp className="h-3.5 w-3.5" />
                     </button>
                   )}
                   {idx < feedItems.length - 1 && (
                     <button
                       type="button"
                       onClick={scrollToNext}
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 border border-white/15 text-white/80 hover:text-white backdrop-blur-md active:scale-90 transition-all"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/50 border border-white/15 text-white/80 hover:text-white backdrop-blur-md active:scale-90 transition-all"
                       aria-label="Следующая серия"
                     >
-                      <ChevronDown className="h-4 w-4" />
+                      <ChevronDown className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
               </div>
 
               {/* Нижняя информация (TikTok Style) */}
-              <div className="absolute left-3.5 bottom-6 right-20 z-20 pointer-events-none">
-                {/* Бейдж автора / AI */}
-                <div className="flex items-center gap-2 mb-2">
-                  {item.drama.isAiGenerated ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 border border-white/20 px-2.5 py-0.5 text-[11px] font-black text-white shadow-md backdrop-blur-md">
-                      <Sparkles className="h-3 w-3" />
-                      AI Сериал
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/90 border border-white/20 px-2.5 py-0.5 text-[11px] font-bold text-primary-foreground shadow-md backdrop-blur-md">
-                      <Film className="h-3 w-3" />
-                      Мини-дорама
-                    </span>
-                  )}
+              <div className="absolute left-3.5 bottom-6 right-18 z-20 pointer-events-none">
+                {/* Бейджи */}
+                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 border border-white/20 px-2 py-0.5 text-[10px] font-black text-white shadow-md backdrop-blur-md">
+                    <Sparkles className="h-2.5 w-2.5" />
+                    AI Сериал
+                  </span>
 
-                  {item.drama.hasRussianVoiceover && (
-                    <span className="rounded-full bg-emerald-600/90 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
-                      RU Озвучка
+                  <span className="rounded-full bg-emerald-600/90 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
+                    RU Озвучка
+                  </span>
+
+                  {watched && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
+                      <CheckCircle2 className="h-2.5 w-2.5" />
+                      Просмотрено
                     </span>
                   )}
                 </div>
 
                 {/* Название сериала */}
-                <h3 className="text-base sm:text-lg font-black text-white line-clamp-1 drop-shadow-lg tracking-tight">
+                <h3 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-lg tracking-tight">
                   {item.drama.title}
                 </h3>
 
                 {/* Название серии и номер */}
-                <p className="text-xs sm:text-sm text-white/95 font-semibold line-clamp-1 drop-shadow-md mt-0.5">
+                <p className="text-xs text-white/95 font-semibold line-clamp-1 drop-shadow-md mt-0.5">
                   Серия {item.episodeNumber}: {item.episode.title}
                 </p>
 
                 {/* Хэштеги сериала */}
-                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-bold text-white/80 drop-shadow-md">
+                <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold text-white/80 drop-shadow-md">
                   {item.drama.tags.slice(0, 3).map((tag) => (
                     <span key={tag}>#{tag.replace(/\s+/g, "")}</span>
                   ))}
@@ -450,7 +528,6 @@ export function DramaFeed({
             activeItem.drama.progress?.lastEpisodeNumber || 0
           }
           onSelectEpisode={(selectedEp) => {
-            // Находим целевой индекс в ленте
             const targetIdx = feedItems.findIndex(
               (it) =>
                 it.drama.id === activeItem.drama.id &&
@@ -468,7 +545,6 @@ export function DramaFeed({
 
 /**
  * Отдельный компонент плеера для одной карточки ленты TikTok.
- * Загружает и воспроизводит iframe только когда карточка активна (в фокусе экрана).
  */
 function TikTokEpisodePlayer({
   item,
@@ -490,7 +566,6 @@ function TikTokEpisodePlayer({
     setHasError(false);
   }, [item.episode.videoId]);
 
-  // Слушаем события от плеера
   useEffect(() => {
     if (!isActive) return;
 
@@ -501,7 +576,6 @@ function TikTokEpisodePlayer({
         if (parsed.event === "onReady") {
           setIsLoading(false);
         } else if (parsed.event === "onStateChange") {
-          // 0 = ENDED (серия закончилась -> автопереход)
           if (parsed.info === 0 || parsed.data === 0) {
             onEnded();
           } else if (parsed.info === 1 || parsed.data === 1) {
@@ -511,9 +585,7 @@ function TikTokEpisodePlayer({
           setHasError(true);
           setIsLoading(false);
         }
-      } catch {
-        // Игнорируем не-JSON сообщения
-      }
+      } catch {}
     };
 
     window.addEventListener("message", handleMessage);
@@ -540,7 +612,6 @@ function TikTokEpisodePlayer({
           className="h-full w-full object-cover pointer-events-auto"
         />
       ) : (
-        // Карточка не в фокусе — отображаем только красивое превью
         <div className="relative h-full w-full">
           <img
             src={item.episode.thumbnailUrl || item.drama.coverUrl}
@@ -556,7 +627,6 @@ function TikTokEpisodePlayer({
         </div>
       )}
 
-      {/* Индикатор загрузки */}
       {isActive && isLoading && !hasError && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/60 pointer-events-none backdrop-blur-2xs">
           <div className="flex flex-col items-center gap-2 text-white">
@@ -566,7 +636,6 @@ function TikTokEpisodePlayer({
         </div>
       )}
 
-      {/* Ошибка встраивания */}
       {isActive && hasError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6 text-center z-20">
           <AlertCircle className="h-10 w-10 text-amber-500 mb-2" />
