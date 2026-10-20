@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeFoodPhoto } from "@/lib/ai/gemini";
-import { analyzeFoodPhotoWithOpenRouter } from "@/lib/ai/openrouter";
-import { analyzeFoodPhotoWithGroq } from "@/lib/ai/groq";
+import { analyzeFoodPhotoWithConsensus, type AnalysisProvider } from "@/lib/ai/consensus";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
@@ -77,35 +75,29 @@ async function analyzeRequest(request: NextRequest) {
 
   try {
     const attemptHeader = request.headers.get("x-analysis-attempt");
+    const forcedProvider: AnalysisProvider | undefined =
+      attemptHeader === "groq" || attemptHeader === "tertiary"
+        ? "groq"
+        : attemptHeader === "openrouter" || attemptHeader === "secondary"
+        ? "openrouter"
+        : attemptHeader === "gemini" || attemptHeader === "primary"
+        ? "gemini"
+        : undefined;
+
     const input = {
       dataBase64,
       mimeType,
       totalWeightGrams,
       forceFood: body.force_food,
+      forcedProvider,
     };
-    let result;
-    if (attemptHeader === "groq" || attemptHeader === "tertiary") {
-      result = await analyzeFoodPhotoWithGroq(input);
-    } else if (attemptHeader === "openrouter" || attemptHeader === "secondary") {
-      result = await analyzeFoodPhotoWithOpenRouter(input);
-    } else if (process.env.GEMINI_API_KEY?.trim()) {
-      result = await analyzeFoodPhoto(input);
-    } else {
-      result = await analyzeFoodPhotoWithOpenRouter(input);
-    }
+    const result = await analyzeFoodPhotoWithConsensus(input);
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
-    const attempt = request.headers.get("x-analysis-attempt");
-    let nextAttempt: "openrouter" | "groq" | null = null;
-    if (!attempt || attempt === "primary" || attempt === "gemini") {
-      nextAttempt = process.env.OPENROUTER_API_KEY ? "openrouter" : (process.env.GROQ_API_KEY ? "groq" : null);
-    } else if (attempt === "openrouter" || attempt === "secondary") {
-      nextAttempt = process.env.GROQ_API_KEY ? "groq" : null;
-    }
     const message = error instanceof Error && error.message.length <= 180
       ? error.message
       : "Не удалось распознать фото. Попробуйте ещё раз или добавьте еду вручную.";
-    return NextResponse.json({ error: message, retryable: Boolean(nextAttempt), nextAttempt }, { status: 503 });
+    return NextResponse.json({ error: message, retryable: false }, { status: 503 });
   }
 }
 
