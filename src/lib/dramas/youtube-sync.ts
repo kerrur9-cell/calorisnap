@@ -383,6 +383,14 @@ export async function syncPlaylistSource(
     const meta = extractDramaMetadata(playlistResult.title, playlistResult.description);
     if (source.isAiContent) meta.isAiGenerated = true;
 
+    // Строгая валидация: исключительно ИИ-сериалы с переводом и русской озвучкой
+    if (!meta.isAiGenerated) {
+      return { drama: null, error: "Пропущено: разрешены исключительно ИИ-сериалы (AI-generated)" };
+    }
+    if (!meta.hasRussianVoiceover && !source.isAiContent) {
+      return { drama: null, error: "Пропущено: требуется русская озвучка" };
+    }
+
     const validation = validateAndBuildEpisodes(dramaId, meta.cleanTitle, playlistResult.items);
     if (!validation.isValid) {
       return { drama: null, error: validation.reason ?? "Не удалось определить строгую последовательность серий" };

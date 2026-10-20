@@ -12,14 +12,13 @@ interface DramaFiltersProps {
 }
 
 const FILTER_PILLS = [
-  { id: "AI-сериалы", label: "AI-сериалы", icon: Sparkles },
-  { id: "Все", label: "Все", icon: null },
-  { id: "Русская озвучка", label: "Русская озвучка", icon: Mic },
-  { id: "Русские субтитры", label: "Русские субтитры", icon: Subtitles },
-  { id: "CEO и Власть", label: "CEO и Власть", icon: null },
-  { id: "Мелодрама", label: "Мелодрама", icon: null },
-  { id: "Фэнтези", label: "Фэнтези", icon: null },
-  { id: "Исторический", label: "Исторический", icon: null },
+  { id: "Все", label: "Все AI-сериалы", icon: Sparkles },
+  { id: "Бизнес и Успех", label: "Бизнес и Успех", icon: null },
+  { id: "Катастрофа", label: "Катастрофа", icon: null },
+  { id: "Месть", label: "Месть", icon: null },
+  { id: "Семья", label: "Семья", icon: null },
+  { id: "Справедливость", label: "Справедливость", icon: null },
+  { id: "Драма", label: "Драма", icon: null },
 ];
 
 export function DramaFilters({

@@ -147,12 +147,14 @@ export async function getDramas(options: GetDramasOptions = {}): Promise<Drama[]
     }
   }
 
-  // Фильтрация
-  let result = allDramas.map((d) => ({
-    ...d,
-    progress: userProgressMap.get(d.id) || null,
-    isFavorite: userFavorites.has(d.id),
-  }));
+  // Фильтрация (исключительно ИИ-сериалы с русской озвучкой)
+  let result = allDramas
+    .filter((d) => d.isAiGenerated && d.hasRussianVoiceover)
+    .map((d) => ({
+      ...d,
+      progress: userProgressMap.get(d.id) || null,
+      isFavorite: userFavorites.has(d.id),
+    }));
 
   if (query && query.trim()) {
     const q = query.trim().toLowerCase();

@@ -104,27 +104,27 @@ describe("Drama Service", () => {
   });
 
   it("filters dramas by search query and tag", async () => {
-    const found = await getDramas({ query: "Нечисть" });
+    const found = await getDramas({ query: "Баоцзы" });
     expect(found.length).toBeGreaterThanOrEqual(1);
-    expect(found[0].title).toContain("Нечисть");
+    expect(found[0].title).toContain("Баоцзы");
 
     const aiOnly = await getDramas({ tag: "AI-сериалы" });
     expect(aiOnly.every((d) => d.isAiGenerated)).toBe(true);
   });
 
   it("retrieves a drama by ID with all ordered episodes", async () => {
-    const drama = await getDramaById("drama-the-demon-yao");
+    const drama = await getDramaById("drama-ai-baozi");
     expect(drama).toBeDefined();
-    expect(drama?.episodes.length).toBeGreaterThanOrEqual(5);
+    expect(drama?.episodes.length).toBeGreaterThanOrEqual(2);
     expect(drama?.episodes[0].episodeNumber).toBe(1);
     expect(drama?.episodes[1].episodeNumber).toBe(2);
   });
 
   it("records user playback progress and favorites", async () => {
     const userId = "test-user-123";
-    const dramaId = "drama-the-demon-yao";
+    const dramaId = "drama-ai-baozi";
 
-    const progress = await saveDramaProgress(userId, dramaId, "ep-yao-2", 2, 120, false);
+    const progress = await saveDramaProgress(userId, dramaId, "ep-baozi-2", 2, 120, false);
     expect(progress.lastEpisodeNumber).toBe(2);
 
     const isFav = await toggleFavorite(userId, dramaId);

@@ -57,11 +57,11 @@ export default function DramasPage() {
               <Sparkles className="h-5 w-5 text-violet-500" />
             </div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-foreground">
-              Мини-сериалы
+              AI-Сериалы
             </h1>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Китайские дорамы и AI-сериалы с русской озвучкой
+            Китайские нейросериалы с русской озвучкой
           </p>
         </div>
 
@@ -102,31 +102,16 @@ export default function DramasPage() {
             type="button"
             onClick={() => {
               setFavoriteOnly(false);
-              setActiveTag("AI-сериалы");
+              setActiveTag("Все");
             }}
             className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
-              !favoriteOnly && activeTag === "AI-сериалы"
+              !favoriteOnly && activeTag === "Все"
                 ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm"
                 : "bg-muted/80 text-muted-foreground hover:text-foreground"
             }`}
           >
             <Sparkles className="h-3 w-3" />
-            AI-сериалы
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setFavoriteOnly(false);
-              setActiveTag("Все");
-            }}
-            className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
-              !favoriteOnly && activeTag === "Все"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "bg-muted/80 text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Все сериалы
+            Все AI-сериалы
           </button>
 
           <button
@@ -147,15 +132,45 @@ export default function DramasPage() {
             type="button"
             onClick={() => {
               setFavoriteOnly(false);
-              setActiveTag("Русская озвучка");
+              setActiveTag("Бизнес и Успех");
             }}
             className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
-              !favoriteOnly && activeTag === "Русская озвучка"
+              !favoriteOnly && activeTag === "Бизнес и Успех"
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "bg-muted/80 text-muted-foreground hover:text-foreground"
             }`}
           >
-            RU Озвучка
+            Бизнес и Успех
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFavoriteOnly(false);
+              setActiveTag("Катастрофа");
+            }}
+            className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
+              !favoriteOnly && activeTag === "Катастрофа"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/80 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Катастрофа
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFavoriteOnly(false);
+              setActiveTag("Месть");
+            }}
+            className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
+              !favoriteOnly && activeTag === "Месть"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/80 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Месть
           </button>
         </div>
       )}
