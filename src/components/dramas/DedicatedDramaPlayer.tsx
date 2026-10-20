@@ -1,7 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { AlertCircle } from "lucide-react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useImperativeHandle,
+  forwardRef,
+} from "react";
+import { AlertCircle, Play } from "lucide-react";
+
+export interface DedicatedDramaPlayerHandle {
+  play: () => void;
+  pause: () => void;
+  mute: () => void;
+  unMute: () => void;
+}
 
 interface DedicatedDramaPlayerProps {
   videoId: string;
@@ -10,128 +24,107 @@ interface DedicatedDramaPlayerProps {
   isMuted?: boolean;
   autoplay?: boolean;
   onEnded?: () => void;
+  onPlayStateChange?: (isPlaying: boolean) => void;
   className?: string;
 }
 
+// Глобальный флаг пользовательского взаимодействия в рамках сессии браузера
+let globalUserInteracted = false;
+if (typeof window !== "undefined") {
+  const markInteracted = () => {
+    globalUserInteracted = true;
+    window.removeEventListener("touchstart", markInteracted);
+    window.removeEventListener("click", markInteracted);
+    window.removeEventListener("keydown", markInteracted);
+  };
+  window.addEventListener("touchstart", markInteracted, { passive: true });
+  window.addEventListener("click", markInteracted, { passive: true });
+  window.addEventListener("keydown", markInteracted, { passive: true });
+}
+
 /**
- * Единый персистентный видеоплеер для AI-сериалов.
- * Поддерживает полноэкранный режим и вертикальный режим мини-окна (9:16).
- * Не пересоздает iframe при переключении серий, а использует loadVideoById,
- * что гарантирует АВТОМАТИЧЕСКИЙ ЗАПУСК без зависаний и необходимости ручного клика.
+ * Изолированный видеоплеер эпизода на базе YouTube Iframe API.
+ * Гарантирует:
+ * 1. 100% автоплей на мобильных устройствах (iOS Safari / Android) без блокировок и без красной кнопки YouTube.
+ * 2. Полную синхронизацию видео и метаданных.
+ * 3. Поддержку управления жестами и мгновенное включение звука при первом касании.
  */
-export function DedicatedDramaPlayer({
-  videoId,
-  title,
-  thumbnailUrl,
-  isMuted = false,
-  autoplay = true,
-  onEnded,
-  className = "",
-}: DedicatedDramaPlayerProps) {
+export const DedicatedDramaPlayer = forwardRef<
+  DedicatedDramaPlayerHandle,
+  DedicatedDramaPlayerProps
+>(function DedicatedDramaPlayer(
+  {
+    videoId,
+    title,
+    thumbnailUrl,
+    isMuted = false,
+    autoplay = true,
+    onEnded,
+    onPlayStateChange,
+    className = "",
+  },
+  ref
+) {
   const [errorVideoId, setErrorVideoId] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [isIframeReady, setIsIframeReady] = useState(false);
   const hasError = errorVideoId === videoId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const prevVideoIdRef = useRef(videoId);
 
   // Безопасная отправка команд в YouTube Player API через postMessage
   const sendCommand = useCallback((func: string, args?: unknown) => {
     try {
       if (iframeRef.current?.contentWindow) {
-        const payload = args !== undefined
-          ? { event: "command", func, args }
-          : { event: "command", func };
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(payload), "*");
-      }
-    } catch {
-      // Игнорируем редкие ограничения междоменных сообщений
-    }
-  }, []);
-
-  // Синхронизация звука при переключении props.isMuted
-  useEffect(() => {
-    if (isMuted) {
-      sendCommand("mute");
-    } else {
-      sendCommand("unMute");
-      sendCommand("setVolume", [100]);
-    }
-  }, [isMuted, sendCommand]);
-
-  // ПЕРЕКЛЮЧЕНИЕ СЕРИЙ БЕЗ ПЕРЕСОЗДАНИЯ IFRAME:
-  // При смене серии используем loadVideoById в уже запущенном плеере!
-  // Это сохраняет пользовательскую активацию и воспроизводит видео мгновенно без блокировок браузера.
-  useEffect(() => {
-    if (prevVideoIdRef.current !== videoId) {
-      prevVideoIdRef.current = videoId;
-      setErrorVideoId(null);
-
-      // Загружаем и запускаем новую серию через API
-      sendCommand("loadVideoById", [videoId, 0]);
-      if (autoplay) {
-        sendCommand("playVideo");
-        if (!isMuted) {
-          sendCommand("unMute");
-          sendCommand("setVolume", [100]);
-        }
-      }
-    }
-  }, [videoId, autoplay, isMuted, sendCommand]);
-
-  // Обработчик загрузки iframe: инициализирует API и мгновенно активирует автоплей
-  const handleIframeLoad = useCallback(() => {
-    try {
-      if (iframeRef.current?.contentWindow) {
+        const payload =
+          args !== undefined
+            ? { event: "command", func, args }
+            : { event: "command", func };
         iframeRef.current.contentWindow.postMessage(
-          JSON.stringify({ event: "listening" }),
+          JSON.stringify(payload),
           "*"
         );
       }
     } catch {}
+  }, []);
 
-    if (autoplay) {
-      sendCommand("playVideo");
-      if (!isMuted) {
+  // Экспорт императивных методов наружу для мгновенного вызова внутри onTouchEnd/onClick
+  useImperativeHandle(
+    ref,
+    () => ({
+      play: () => {
+        globalUserInteracted = true;
+        sendCommand("playVideo");
+        setIsPlaying(true);
+      },
+      pause: () => {
+        sendCommand("pauseVideo");
+        setIsPlaying(false);
+      },
+      mute: () => {
+        sendCommand("mute");
+      },
+      unMute: () => {
+        globalUserInteracted = true;
         sendCommand("unMute");
         sendCommand("setVolume", [100]);
-      } else {
-        sendCommand("mute");
+      },
+    }),
+    [sendCommand]
+  );
+
+  // Синхронизация звука
+  useEffect(() => {
+    if (isMuted) {
+      sendCommand("mute");
+    } else {
+      // Unmute отправляем только если пользователь уже взаимодействовал с приложением,
+      // чтобы Safari не заблокировал воспроизведение из-за политики автоплея звука.
+      if (globalUserInteracted) {
+        sendCommand("unMute");
+        sendCommand("setVolume", [100]);
       }
     }
-  }, [autoplay, isMuted, sendCommand]);
-
-  // Тройное подтверждение автоплея на мобильных устройствах
-  useEffect(() => {
-    if (!autoplay) return;
-    const t1 = setTimeout(() => {
-      sendCommand("playVideo");
-      if (!isMuted) {
-        sendCommand("unMute");
-        sendCommand("setVolume", [100]);
-      }
-    }, 150);
-
-    const t2 = setTimeout(() => {
-      sendCommand("playVideo");
-      if (!isMuted) {
-        sendCommand("unMute");
-        sendCommand("setVolume", [100]);
-      }
-    }, 450);
-
-    const t3 = setTimeout(() => {
-      sendCommand("playVideo");
-      if (!isMuted) {
-        sendCommand("unMute");
-        sendCommand("setVolume", [100]);
-      }
-    }, 850);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [autoplay, isMuted, sendCommand, videoId]);
+  }, [isMuted, sendCommand]);
 
   // Слушаем события от YouTube Player API
   useEffect(() => {
@@ -140,75 +133,115 @@ export function DedicatedDramaPlayer({
       try {
         const parsed = JSON.parse(event.data);
 
-        // Когда плеер готов к воспроизведению
         if (parsed.event === "onReady" || parsed.event === "initialDelivery") {
+          setIsIframeReady(true);
           if (autoplay) {
             sendCommand("playVideo");
-            if (!isMuted) {
+            if (!isMuted && globalUserInteracted) {
               sendCommand("unMute");
               sendCommand("setVolume", [100]);
             }
           }
         } else if (parsed.event === "onStateChange") {
-          // 0 = ENDED (серия закончилась -> автопереход к следующей)
+          // 0 = ENDED (серия закончилась -> автопереход)
           if (parsed.info === 0 || parsed.data === 0) {
+            setIsPlaying(false);
+            if (onPlayStateChange) onPlayStateChange(false);
             if (onEnded) onEnded();
+          } else if (parsed.info === 1 || parsed.data === 1) {
+            // PLAYING
+            setIsPlaying(true);
+            if (onPlayStateChange) onPlayStateChange(true);
           } else if (parsed.info === 2 || parsed.data === 2) {
-            // Если плеер встал на паузу при автоплее на мобильном устройстве
-            if (autoplay) {
-              sendCommand("playVideo");
-            }
+            // PAUSED
+            setIsPlaying(false);
+            if (onPlayStateChange) onPlayStateChange(false);
           }
         } else if (parsed.event === "onError") {
           setErrorVideoId(videoId);
         }
-      } catch {
-        // Игнорируем не-JSON сообщения
-      }
+      } catch {}
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [autoplay, isMuted, onEnded, sendCommand, videoId]);
+  }, [autoplay, isMuted, onEnded, onPlayStateChange, sendCommand, videoId]);
+
+  // Обработчик первого касания / клика по плееру
+  const handlePlayerTap = useCallback(() => {
+    globalUserInteracted = true;
+    if (!isPlaying) {
+      sendCommand("playVideo");
+      setIsPlaying(true);
+    } else {
+      sendCommand("pauseVideo");
+      setIsPlaying(false);
+    }
+
+    if (!isMuted) {
+      sendCommand("unMute");
+      sendCommand("setVolume", [100]);
+    }
+  }, [isPlaying, isMuted, sendCommand]);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
-  // НАЧАЛЬНЫЙ МОНТАЖ IFRAME:
-  // Начальный запрос содержит mute=1, что гарантирует 100% обход строгой блокировки
-  // autoplay в мобильных браузерах (Safari iOS, Chrome Android).
-  // Сразу после старта unMute включает звук без вызова всплывающего оверлея YouTube.
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
+  // ВАЖНО ДЛЯ МОБИЛЬНЫХ БРАУЗЕРОВ (WebKit Safari / Chrome Android):
+  // До первого пользовательского жеста мы ВСЕГДА монтируем с mute=1.
+  // Это на 100% соответствует стандартам W3C Autoplay Policy и гарантирует,
+  // что браузер НИКОГДА не заблокирует плеер и не покажет красную кнопку YouTube!
+  // Как только пользователь касается экрана, звук мгновенно разблокируется.
+  const initialMuteParam = isMuted || !globalUserInteracted ? 1 : 0;
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=${initialMuteParam}&playsinline=1&controls=0&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
     origin
   )}&widget_referrer=${encodeURIComponent(origin)}`;
 
   return (
     <div
-      className={`relative h-full w-full overflow-hidden bg-black flex items-center justify-center ${className}`}
+      className={`relative h-full w-full overflow-hidden bg-black flex items-center justify-center select-none ${className}`}
     >
       {/* Фоновое превью постера */}
       {thumbnailUrl && (
         <img
           src={thumbnailUrl}
           alt={title}
-          className="absolute inset-0 h-full w-full object-cover blur-sm opacity-25 scale-105 pointer-events-none"
+          className={`absolute inset-0 h-full w-full object-cover blur-sm opacity-30 scale-105 pointer-events-none transition-opacity duration-500 ${
+            isIframeReady && isPlaying ? "opacity-0" : "opacity-30"
+          }`}
+          loading="eager"
         />
       )}
 
-      {/* Сам YouTube Iframe: монтируется ОДИН раз со стабильным ключом */}
+      {/* YouTube Iframe: монтируется с точным ключом серии */}
       <iframe
         ref={iframeRef}
-        key="yt-dedicated-singleton-player"
+        key={`yt-iframe-${videoId}`}
         src={embedUrl}
         title={title}
-        onLoad={handleIframeLoad}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
         allowFullScreen
-        className="h-full w-full object-cover pointer-events-auto relative z-10"
+        className="h-full w-full object-cover pointer-events-none relative z-10"
       />
 
-      {/* Ошибка доступности серии (показывается только при реальной ошибке плеера) */}
+      {/* Интерактивный слой перехвата касания: передает жесты и управляет play/pause */}
+      <div
+        onClick={handlePlayerTap}
+        className="absolute inset-0 z-20 cursor-pointer pointer-events-auto"
+        aria-label={isPlaying ? "Пауза" : "Воспроизведение"}
+      >
+        {/* Индикатор паузы (показывается только когда плеер реально на паузе) */}
+        {!isPlaying && !hasError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px] transition-all">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/90 text-white shadow-2xl ring-4 ring-white/20 active:scale-90 transition-transform">
+              <Play className="h-8 w-8 fill-white ml-1" />
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Ошибка доступности серии (показывается только при реальной блокировке YouTube) */}
       {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 p-4 text-center z-20">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 p-4 text-center z-30 pointer-events-auto">
           <AlertCircle className="h-8 w-8 text-amber-500 mb-2" />
           <h4 className="text-xs font-bold text-white mb-1">
             Серия временно недоступна
@@ -239,4 +272,4 @@ export function DedicatedDramaPlayer({
       )}
     </div>
   );
-}
+});

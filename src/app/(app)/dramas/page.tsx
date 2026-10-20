@@ -57,7 +57,7 @@ export default function DramasPage() {
   };
 
   return (
-    <main className={`min-h-dvh px-3 sm:px-4 ${viewMode === "feed" ? "pt-1 pb-1" : "pt-3 pb-8"}`}>
+    <main className={`px-3 sm:px-4 ${viewMode === "feed" ? "h-[calc(100dvh-5.5rem)] overflow-hidden pt-1 pb-0" : "min-h-dvh pt-3 pb-8"}`}>
       {/* Шапка раздела */}
       <header className={`flex items-center justify-between ${viewMode === "feed" ? "mb-1.5" : "mb-3.5"}`}>
         <div>

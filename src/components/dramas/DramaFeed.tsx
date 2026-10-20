@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import type { Drama, DramaEpisode } from "@/lib/dramas/types";
 import { EpisodePickerDrawer } from "./EpisodePickerDrawer";
-import { DedicatedDramaPlayer } from "./DedicatedDramaPlayer";
+import { DedicatedDramaPlayer, DedicatedDramaPlayerHandle } from "./DedicatedDramaPlayer";
 import { useSaveDramaProgress, useToggleFavorite } from "@/hooks/useDramas";
 import { useDramaPlayer } from "@/context/DramaPlayerContext";
 
@@ -60,6 +60,7 @@ export function DramaFeed({
 }: DramaFeedProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const activePlayerRef = useRef<DedicatedDramaPlayerHandle>(null);
   const [activeIndex, setActiveIndex] = useState(() =>
     findInitialFeedIndex(initialDramas, initialDramaId, initialEpisodeNumber)
   );
@@ -300,7 +301,7 @@ export function DramaFeed({
   }
 
   return (
-    <div className="relative w-full h-[calc(100dvh-13.5rem)] sm:h-[calc(100dvh-12.5rem)] max-h-[calc(100dvh-12rem)] rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/10 select-none">
+    <div className="relative w-full h-[calc(100dvh-14.5rem)] sm:h-[calc(100dvh-13rem)] max-h-[calc(100dvh-13rem)] rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/10 select-none">
       {/* Кнопка случайного перемешивания вверху слева */}
       <div
         className={`absolute top-3 left-3 z-30 pointer-events-auto transition-opacity duration-300 ${
@@ -361,29 +362,11 @@ export function DramaFeed({
         ))}
       </div>
 
-      {/* Единый персистентный плеер: живет стабильно в DOM, переключает серии через loadVideoById без пересоздания iframe! */}
-      {!isMiniPlayerOpen && activeItem && (
-        <div className="absolute inset-0 z-10 pointer-events-auto">
-          <DedicatedDramaPlayer
-            videoId={activeItem.episode.videoId}
-            title={activeItem.episode.title}
-            thumbnailUrl={activeItem.episode.thumbnailUrl || activeItem.drama.coverUrl}
-            isMuted={isMuted}
-            autoplay={true}
-            onEnded={() => {
-              markWatched(activeItem.drama.id, activeItem.episodeNumber, true);
-              scrollToNext();
-            }}
-            className="h-full w-full object-cover"
-          />
-        </div>
-      )}
-
       {/* Вертикальный TikTok-контейнер со строгим scroll-snap */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="relative z-20 h-full w-full overflow-y-scroll snap-y snap-mandatory scroll-smooth touch-pan-y overscroll-contain scrollbar-none"
+        className="relative z-10 h-full w-full overflow-y-scroll snap-y snap-mandatory scroll-smooth touch-pan-y overscroll-contain scrollbar-none"
         style={{
           scrollSnapType: "y mandatory",
           WebkitOverflowScrolling: "touch",
@@ -419,10 +402,26 @@ export function DramaFeed({
               }}
               onDoubleClick={(e) => triggerHeart(e.clientX, e.clientY, item.drama.id)}
               onTouchEnd={(e) => handleTouchEnd(e, item.drama.id)}
-              className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-transparent flex items-center justify-center"
+              className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-black flex items-center justify-center"
             >
-              {/* Для неактивных карточек во время свайпа показываем их превью */}
-              {!isActive && (
+              {/* Активный изолированный видеоплеер карточки */}
+              {isActive && !isMiniPlayerOpen ? (
+                <DedicatedDramaPlayer
+                  ref={activePlayerRef}
+                  key={`feed-player-${item.episode.videoId}`}
+                  videoId={item.episode.videoId}
+                  title={item.episode.title}
+                  thumbnailUrl={item.episode.thumbnailUrl || item.drama.coverUrl}
+                  isMuted={isMuted}
+                  autoplay={true}
+                  onEnded={() => {
+                    markWatched(item.drama.id, item.episodeNumber, true);
+                    scrollToNext();
+                  }}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                /* Для неактивных карточек во время свайпа показываем их превью */
                 <div
                   className="absolute inset-0 h-full w-full cursor-pointer bg-black"
                   onClick={() => {
@@ -458,7 +457,7 @@ export function DramaFeed({
 
               {/* Правая плавающая панель кнопок (TikTok Style) */}
               <div
-                className={`absolute right-2.5 sm:right-3 bottom-2.5 sm:bottom-3 z-30 flex flex-col items-center gap-2 pointer-events-auto transition-opacity duration-300 ${
+                className={`absolute right-2.5 sm:right-3 bottom-7 sm:bottom-9 z-30 flex flex-col items-center gap-2 pointer-events-auto transition-opacity duration-300 ${
                   isCleanMode ? "opacity-0 pointer-events-none" : "opacity-100"
                 }`}
               >
@@ -624,7 +623,7 @@ export function DramaFeed({
 
               {/* Нижняя информация (TikTok Style) */}
               <div
-                className={`absolute left-3 bottom-2.5 sm:bottom-3 right-16 z-20 pointer-events-none transition-opacity duration-300 ${
+                className={`absolute left-3 bottom-7 sm:bottom-9 right-16 z-20 pointer-events-none transition-opacity duration-300 ${
                   isCleanMode ? "opacity-0" : "opacity-100"
                 }`}
               >
