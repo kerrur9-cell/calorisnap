@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Star,
+  Heart,
   ListVideo,
   ChevronDown,
   ChevronUp,
@@ -18,6 +19,8 @@ import {
   Minimize2,
   Shuffle,
   CheckCircle2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { Drama, DramaEpisode } from "@/lib/dramas/types";
 import { EpisodePickerDrawer } from "./EpisodePickerDrawer";
@@ -51,6 +54,9 @@ export function DramaFeed({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isCleanMode, setIsCleanMode] = useState(false);
+  const [hearts, setHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
 
   const saveProgress = useSaveDramaProgress();
   const toggleFavorite = useToggleFavorite();
@@ -108,6 +114,53 @@ export function DramaFeed({
     }
     return list;
   }, [dramasSequence]);
+
+  // Триггер анимации сердечка в стиле TikTok
+  const triggerHeart = useCallback(
+    (clientX?: number, clientY?: number, dramaId?: string) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      const x = clientX && rect ? clientX - rect.left : 160;
+      const y = clientY && rect ? clientY - rect.top : 260;
+      const newHeart = { id: Date.now() + Math.random(), x, y };
+
+      setHearts((prev) => [...prev.slice(-8), newHeart]);
+      setTimeout(() => {
+        setHearts((prev) => prev.filter((h) => h.id !== newHeart.id));
+      }, 900);
+
+      if (dramaId) {
+        const item = feedItems.find((f) => f.drama.id === dramaId);
+        if (item && !item.drama.isFavorite) {
+          toggleFavorite.mutate(dramaId);
+        }
+      }
+    },
+    [feedItems, toggleFavorite]
+  );
+
+  // Двойной тап по экрану (TikTok double-tap like)
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent, dramaId: string) => {
+      const now = Date.now();
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+
+      const diff = now - lastTapRef.current.time;
+      const dist = Math.hypot(
+        touch.clientX - lastTapRef.current.x,
+        touch.clientY - lastTapRef.current.y
+      );
+
+      if (diff < 320 && dist < 40) {
+        // Зафиксирован двойной тап!
+        triggerHeart(touch.clientX, touch.clientY, dramaId);
+        lastTapRef.current = { time: 0, x: 0, y: 0 };
+      } else {
+        lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+      }
+    },
+    [triggerHeart]
+  );
 
   // Вычисляем стартовый индекс при открытии (например, выбранный сериал из каталога)
   useEffect(() => {
@@ -226,7 +279,11 @@ export function DramaFeed({
   return (
     <div className="relative w-full h-[calc(100dvh-12.5rem)] min-h-[480px] max-h-[820px] rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/10 select-none">
       {/* Кнопка случайного перемешивания вверху слева */}
-      <div className="absolute top-3 left-3 z-30 pointer-events-auto">
+      <div
+        className={`absolute top-3 left-3 z-30 pointer-events-auto transition-opacity duration-300 ${
+          isCleanMode ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
         <button
           type="button"
           onClick={handleShuffleClick}
@@ -236,6 +293,49 @@ export function DramaFeed({
           <Shuffle className="h-3 w-3 text-violet-400" />
           <span>Перемешать</span>
         </button>
+      </div>
+
+      {/* Кнопка "Чистый экран" вверху справа */}
+      <div className="absolute top-3 right-3 z-30 pointer-events-auto">
+        <button
+          type="button"
+          onClick={() => setIsCleanMode((prev) => !prev)}
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold shadow-lg backdrop-blur-md transition-all active:scale-95 ${
+            isCleanMode
+              ? "bg-violet-600/90 border border-violet-400 text-white"
+              : "bg-black/60 border border-white/20 text-white/80 hover:text-white"
+          }`}
+          title={isCleanMode ? "Показать интерфейс" : "Чистый экран (без кнопок)"}
+        >
+          {isCleanMode ? (
+            <>
+              <Eye className="h-3.5 w-3.5 text-white" />
+              <span>Показать меню</span>
+            </>
+          ) : (
+            <>
+              <EyeOff className="h-3.5 w-3.5" />
+              <span>Чистый экран</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Летающие сердечки при двойном клике / тапе (TikTok Heart Burst) */}
+      <div className="absolute inset-0 pointer-events-none z-40 overflow-hidden">
+        {hearts.map((h) => (
+          <div
+            key={h.id}
+            className="absolute transition-all transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+            style={{
+              left: h.x,
+              top: h.y,
+              animation: "ping 0.8s cubic-bezier(0, 0, 0.2, 1) forwards",
+            }}
+          >
+            <Heart className="h-14 w-14 fill-rose-500 text-rose-500 drop-shadow-[0_0_20px_rgba(244,63,94,0.95)]" />
+          </div>
+        ))}
       </div>
 
       {/* Вертикальный TikTok-контейнер со строгим scroll-snap */}
@@ -260,6 +360,8 @@ export function DramaFeed({
               ref={(el) => {
                 itemRefs.current[idx] = el;
               }}
+              onDoubleClick={(e) => triggerHeart(e.clientX, e.clientY, item.drama.id)}
+              onTouchEnd={(e) => handleTouchEnd(e, item.drama.id)}
               className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-black flex items-center justify-center"
             >
               {/* Фоновое превью / Постер */}
@@ -310,12 +412,16 @@ export function DramaFeed({
               <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-none" />
 
               {/* Правая плавающая панель кнопок (TikTok Style) */}
-              <div className="absolute right-3 bottom-8 z-30 flex flex-col items-center gap-3 pointer-events-auto">
+              <div
+                className={`absolute right-3 bottom-8 z-30 flex flex-col items-center gap-2.5 pointer-events-auto transition-opacity duration-300 ${
+                  isCleanMode ? "opacity-0 pointer-events-none" : "opacity-100"
+                }`}
+              >
                 {/* Аватар / Постер сериала */}
                 <button
                   type="button"
                   onClick={() => setIsDrawerOpen(true)}
-                  className="relative group active:scale-90 transition-transform"
+                  className="relative group active:scale-90 transition-transform mb-0.5"
                   aria-label="Все серии"
                 >
                   <div className="h-10 w-10 rounded-full p-0.5 bg-gradient-to-tr from-violet-600 via-primary to-fuchsia-500 shadow-xl">
@@ -330,11 +436,36 @@ export function DramaFeed({
                   </span>
                 </button>
 
+                {/* TikTok Лайк с анимацией сердечка */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    triggerHeart(e.clientX, e.clientY, item.drama.id);
+                    toggleFavorite.mutate(item.drama.id);
+                  }}
+                  className="flex flex-col items-center gap-0.5 active:scale-75 transition-transform"
+                  aria-label={item.drama.isFavorite ? "В избранном" : "Поставить лайк"}
+                  title="Лайк / В избранное"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80 transition-all">
+                    <Heart
+                      className={`h-5 w-5 transition-transform duration-200 ${
+                        item.drama.isFavorite
+                          ? "fill-rose-500 text-rose-500 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]"
+                          : "text-white"
+                      }`}
+                    />
+                  </span>
+                  <span className="text-[10px] font-bold text-white drop-shadow-md">
+                    {item.drama.isFavorite ? "Любимое" : "Лайк"}
+                  </span>
+                </button>
+
                 {/* Кнопка "В окне" (Floating Picture-in-Picture Mini-Player) */}
                 <button
                   type="button"
                   onClick={() => openMiniPlayer(item)}
-                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  className="flex flex-col items-center gap-0.5 active:scale-85 transition-transform"
                   aria-label="Смотреть в окне"
                   title="Смотреть в окне и пользоваться сайтом"
                 >
@@ -350,7 +481,7 @@ export function DramaFeed({
                 <button
                   type="button"
                   onClick={() => markWatched(item.drama.id, item.episodeNumber, !watched)}
-                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  className="flex flex-col items-center gap-0.5 active:scale-85 transition-transform"
                   aria-label={watched ? "Отмечено как просмотрено" : "Отметить просмотренным"}
                   title={watched ? "Снять отметку" : "Отметить как просмотренное"}
                 >
@@ -368,30 +499,11 @@ export function DramaFeed({
                   </span>
                 </button>
 
-                {/* Кнопка "В закладки / Избранное" */}
-                <button
-                  type="button"
-                  onClick={() => toggleFavorite.mutate(item.drama.id)}
-                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
-                  aria-label={item.drama.isFavorite ? "В избранном" : "В закладки"}
-                >
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
-                    <Star
-                      className={`h-4.5 w-4.5 transition-colors ${
-                        item.drama.isFavorite ? "fill-amber-400 text-amber-400" : "text-white"
-                      }`}
-                    />
-                  </span>
-                  <span className="text-[10px] font-bold text-white drop-shadow-md">
-                    {item.drama.isFavorite ? "В избранном" : "Закладка"}
-                  </span>
-                </button>
-
                 {/* Кнопка выбора серий */}
                 <button
                   type="button"
                   onClick={() => setIsDrawerOpen(true)}
-                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  className="flex flex-col items-center gap-0.5 active:scale-85 transition-transform"
                   aria-label="Список серий"
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
@@ -406,7 +518,7 @@ export function DramaFeed({
                 <button
                   type="button"
                   onClick={() => setIsMuted((prev) => !prev)}
-                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  className="flex flex-col items-center gap-0.5 active:scale-85 transition-transform"
                   aria-label={isMuted ? "Включить звук" : "Выключить звук"}
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
@@ -425,7 +537,7 @@ export function DramaFeed({
                 <button
                   type="button"
                   onClick={() => handleShare(item)}
-                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  className="flex flex-col items-center gap-0.5 active:scale-85 transition-transform"
                   aria-label="Поделиться сериалом"
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
@@ -466,7 +578,11 @@ export function DramaFeed({
               </div>
 
               {/* Нижняя информация (TikTok Style) */}
-              <div className="absolute left-3.5 bottom-6 right-18 z-20 pointer-events-none">
+              <div
+                className={`absolute left-3.5 bottom-6 right-18 z-20 pointer-events-none transition-opacity duration-300 ${
+                  isCleanMode ? "opacity-0" : "opacity-100"
+                }`}
+              >
                 {/* Бейджи */}
                 <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                   <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 border border-white/20 px-2 py-0.5 text-[10px] font-black text-white shadow-md backdrop-blur-md">
@@ -522,7 +638,7 @@ export function DramaFeed({
       </div>
 
       {/* Анимация подсказки первого свайпа ("Листайте вверх") */}
-      {showSwipeHint && (
+      {showSwipeHint && !isCleanMode && (
         <div
           onClick={() => {
             setShowSwipeHint(false);
