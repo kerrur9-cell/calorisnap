@@ -137,11 +137,10 @@ export function DedicatedDramaPlayer({
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
-  // КЛЮЧ К АВТОПЛЕЮ:
-  // Начальный запрос всегда содержит mute=1, что гарантирует 100% обход строгой блокировки
-  // autoplay в мобильных браузерах (Safari iOS, Chrome Android).
-  // Сразу после монтирования postMessage unMute включает звук, если пользователь активировал его.
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
+  // Начальный запрос использует mute в зависимости от предпочтения пользователя (по умолчанию со звуком)
+  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=${
+    autoplay ? 1 : 0
+  }&mute=${isMuted ? 1 : 0}&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
     origin
   )}&widget_referrer=${encodeURIComponent(origin)}`;
 

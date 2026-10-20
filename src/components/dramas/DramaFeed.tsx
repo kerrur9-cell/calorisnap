@@ -64,12 +64,12 @@ export function DramaFeed({
     findInitialFeedIndex(initialDramas, initialDramaId, initialEpisodeNumber)
   );
   const [isMuted, setIsMuted] = useState(() => {
-    if (typeof window === "undefined") return true;
+    if (typeof window === "undefined") return false;
     try {
       const saved = localStorage.getItem("calorisnap_dramas_muted");
-      return saved !== null ? saved === "true" : true;
+      return saved !== null ? saved === "true" : false; // Звук ВКЛЮЧЕН по умолчанию
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -300,7 +300,7 @@ export function DramaFeed({
   }
 
   return (
-    <div className="relative w-full h-[calc(100dvh-12.5rem)] min-h-[480px] max-h-[820px] rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/10 select-none">
+    <div className="relative w-full h-[calc(100dvh-13.5rem)] sm:h-[calc(100dvh-12.5rem)] max-h-[calc(100dvh-12rem)] rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/10 select-none">
       {/* Кнопка случайного перемешивания вверху слева */}
       <div
         className={`absolute top-3 left-3 z-30 pointer-events-auto transition-opacity duration-300 ${
@@ -463,7 +463,7 @@ export function DramaFeed({
 
               {/* Правая плавающая панель кнопок (TikTok Style) */}
               <div
-                className={`absolute right-3 bottom-8 z-30 flex flex-col items-center gap-2.5 pointer-events-auto transition-opacity duration-300 ${
+                className={`absolute right-2.5 sm:right-3 bottom-2.5 sm:bottom-3 z-30 flex flex-col items-center gap-2 pointer-events-auto transition-opacity duration-300 ${
                   isCleanMode ? "opacity-0 pointer-events-none" : "opacity-100"
                 }`}
               >
@@ -629,7 +629,7 @@ export function DramaFeed({
 
               {/* Нижняя информация (TikTok Style) */}
               <div
-                className={`absolute left-3.5 bottom-6 right-18 z-20 pointer-events-none transition-opacity duration-300 ${
+                className={`absolute left-3 bottom-2.5 sm:bottom-3 right-16 z-20 pointer-events-none transition-opacity duration-300 ${
                   isCleanMode ? "opacity-0" : "opacity-100"
                 }`}
               >

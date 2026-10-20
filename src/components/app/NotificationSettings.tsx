@@ -151,7 +151,7 @@ export function NotificationSettings({ compact = false }: { compact?: boolean })
     }
   }
 
-  if (compact && (dismissed || subscription || permission === "denied" || pathname === "/profile")) return null;
+  if (compact && (dismissed || subscription || permission === "denied" || pathname === "/profile" || pathname.startsWith("/dramas"))) return null;
   return (
     <section className="glass-card glossy-sheen scroll-sway mb-4 rounded-3xl p-5 shadow-md">
       <div className="mb-2 flex items-center gap-2">

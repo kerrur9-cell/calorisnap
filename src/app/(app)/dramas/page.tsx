@@ -57,21 +57,23 @@ export default function DramasPage() {
   };
 
   return (
-    <main className="min-h-dvh px-4 pt-3 pb-8">
+    <main className={`min-h-dvh px-3 sm:px-4 ${viewMode === "feed" ? "pt-1 pb-1" : "pt-3 pb-8"}`}>
       {/* Шапка раздела */}
-      <header className="mb-3.5 flex items-center justify-between">
+      <header className={`flex items-center justify-between ${viewMode === "feed" ? "mb-1.5" : "mb-3.5"}`}>
         <div>
-          <div className="flex items-center gap-2">
-            <div className="rounded-xl bg-violet-500/15 border border-violet-500/30 p-1.5 shadow-2xs">
-              <Sparkles className="h-5 w-5 text-violet-500" />
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="rounded-xl bg-violet-500/15 border border-violet-500/30 p-1 sm:p-1.5 shadow-2xs">
+              <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-violet-500" />
             </div>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-foreground">
+            <h1 className="text-lg sm:text-2xl font-black tracking-tight text-foreground">
               AI-Сериалы
             </h1>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Китайские нейросериалы с русской озвучкой
-          </p>
+          {viewMode !== "feed" && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Китайские нейросериалы с русской озвучкой
+            </p>
+          )}
         </div>
 
         {/* Переключатель режимов: Лента / Каталог */}
@@ -106,7 +108,7 @@ export default function DramasPage() {
 
       {/* Быстрые фильтры в режиме Ленты */}
       {viewMode === "feed" && (
-        <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4">
+        <div className="mb-1.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none -mx-3 px-3 sm:-mx-4 sm:px-4">
           <button
             type="button"
             onClick={() => {
