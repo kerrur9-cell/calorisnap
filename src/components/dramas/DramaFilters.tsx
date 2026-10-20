@@ -12,8 +12,8 @@ interface DramaFiltersProps {
 }
 
 const FILTER_PILLS = [
-  { id: "Все", label: "Все", icon: null },
   { id: "AI-сериалы", label: "AI-сериалы", icon: Sparkles },
+  { id: "Все", label: "Все", icon: null },
   { id: "Русская озвучка", label: "Русская озвучка", icon: Mic },
   { id: "Русские субтитры", label: "Русские субтитры", icon: Subtitles },
   { id: "CEO и Власть", label: "CEO и Власть", icon: null },

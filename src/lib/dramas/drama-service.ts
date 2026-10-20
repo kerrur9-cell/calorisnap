@@ -93,6 +93,13 @@ export async function getDramas(options: GetDramasOptions = {}): Promise<Drama[]
     console.warn("Supabase dramas query failed, falling back to local memory store:", err);
   }
 
+  // По умолчанию AI-сериалы идут первыми в выдаче
+  allDramas.sort((a, b) => {
+    if (a.isAiGenerated && !b.isAiGenerated) return -1;
+    if (!a.isAiGenerated && b.isAiGenerated) return 1;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
   // Привязываем пользовательский прогресс и избранное
   let userProgressMap = new Map<string, DramaProgress>();
   let userFavorites = new Set<string>();

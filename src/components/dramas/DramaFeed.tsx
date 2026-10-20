@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Star,
   ListVideo,
@@ -9,11 +9,24 @@ import {
   Sparkles,
   Volume2,
   VolumeX,
+  Play,
+  Share2,
+  Film,
+  Check,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
-import type { Drama, DramaEpisode, DramaWithEpisodes } from "@/lib/dramas/types";
-import { DramaVideoPlayer } from "./DramaVideoPlayer";
+import type { Drama, DramaEpisode } from "@/lib/dramas/types";
 import { EpisodePickerDrawer } from "./EpisodePickerDrawer";
-import { useSaveDramaProgress, useToggleFavorite, useDrama } from "@/hooks/useDramas";
+import { useSaveDramaProgress, useToggleFavorite } from "@/hooks/useDramas";
+
+export interface FeedItem {
+  key: string;
+  drama: Drama;
+  episode: DramaEpisode;
+  episodeNumber: number;
+  totalEpisodesInDrama: number;
+}
 
 interface DramaFeedProps {
   initialDramas: Drama[];
@@ -24,259 +37,564 @@ interface DramaFeedProps {
 export function DramaFeed({
   initialDramas,
   initialDramaId,
-  initialEpisodeNumber = 1,
+  initialEpisodeNumber,
 }: DramaFeedProps) {
-  const [currentDramaIndex, setCurrentDramaIndex] = useState(() => {
-    if (initialDramaId) {
-      const idx = initialDramas.findIndex((d) => d.id === initialDramaId);
-      return idx >= 0 ? idx : 0;
-    }
-    return 0;
-  });
-
-  const activeDramaSummary = initialDramas[currentDramaIndex] || initialDramas[0];
-  const { data: activeDramaDetail, isLoading: isLoadingDrama } = useDrama(
-    activeDramaSummary?.id,
-  );
-
-  const [currentEpNumber, setCurrentEpNumber] = useState(initialEpisodeNumber);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const touchStartY = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [showSwipeHint, setShowSwipeHint] = useState(true);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const saveProgress = useSaveDramaProgress();
   const toggleFavorite = useToggleFavorite();
 
-  // Список серий активного сериала
-  const episodes: DramaEpisode[] = activeDramaDetail?.episodes || [];
-  const currentEpisode =
-    episodes.find((ep) => ep.episodeNumber === currentEpNumber) ||
-    episodes[0] || {
-      id: "fallback-ep-1",
-      dramaId: activeDramaSummary?.id || "drama-1",
-      episodeNumber: 1,
-      title: "Серия 1",
-      videoId: "bBEDFJDQuc4",
-      sourcePlatform: "youtube" as const,
-      isAvailable: true,
-      createdAt: new Date().toISOString(),
-    };
+  // Разворачиваем все сериалы в единую последовательную ленту эпизодов (TikTok-формат)
+  const feedItems: FeedItem[] = useMemo(() => {
+    const list: FeedItem[] = [];
+    for (const drama of initialDramas) {
+      const eps = drama.episodes || [];
+      if (eps.length === 0) continue;
 
-  const hasNextEp = episodes.some((ep) => ep.episodeNumber === currentEpNumber + 1);
-  const hasPrevEp = episodes.some((ep) => ep.episodeNumber === currentEpNumber - 1);
-  const hasNextDrama = currentDramaIndex < initialDramas.length - 1;
+      // Сортируем серии строго по порядку 1 -> 2 -> 3...
+      const sortedEps = [...eps].sort((a, b) => a.episodeNumber - b.episodeNumber);
+      for (const ep of sortedEps) {
+        list.push({
+          key: `${drama.id}_ep_${ep.episodeNumber}`,
+          drama,
+          episode: ep,
+          episodeNumber: ep.episodeNumber,
+          totalEpisodesInDrama: sortedEps.length,
+        });
+      }
+    }
+    return list;
+  }, [initialDramas]);
 
-  // При смене активного сериала восстанавливаем сохранённый прогресс пользователя
+  // Вычисляем стартовый индекс при открытии (например, сохранённый прогресс или выбранный сериал)
   useEffect(() => {
-    if (activeDramaSummary?.progress?.lastEpisodeNumber) {
-      setCurrentEpNumber(activeDramaSummary.progress.lastEpisodeNumber);
-    } else {
-      setCurrentEpNumber(1);
-    }
-  }, [activeDramaSummary?.id]);
+    if (feedItems.length === 0) return;
 
-  // Сохраняем прогресс просмотра при смене серии
-  const handleSaveProgress = useCallback(
-    (epNum: number, isCompleted: boolean = false) => {
-      if (!activeDramaSummary) return;
-      saveProgress.mutate({
-        dramaId: activeDramaSummary.id,
-        episodeId: currentEpisode.id,
-        episodeNumber: epNum,
-        isCompleted,
+    let targetIdx = 0;
+    if (initialDramaId) {
+      const foundIdx = feedItems.findIndex((it) => {
+        if (it.drama.id !== initialDramaId) return false;
+        if (initialEpisodeNumber) {
+          return it.episodeNumber === initialEpisodeNumber;
+        }
+        return true;
       });
-    },
-    [activeDramaSummary, currentEpisode.id, saveProgress],
-  );
-
-  const handleNext = useCallback(() => {
-    if (hasNextEp) {
-      const nextEp = currentEpNumber + 1;
-      setCurrentEpNumber(nextEp);
-      handleSaveProgress(nextEp);
-    } else if (hasNextDrama) {
-      // Сериал закончился — переходим к следующему сериалу
-      setCurrentDramaIndex((prev) => prev + 1);
-      setCurrentEpNumber(1);
+      if (foundIdx >= 0) targetIdx = foundIdx;
+    } else {
+      // Ищем сериал с активным прогрессом
+      const progressIdx = feedItems.findIndex((it) => {
+        return (
+          it.drama.progress &&
+          it.drama.progress.lastEpisodeNumber === it.episodeNumber &&
+          !it.drama.progress.isCompleted
+        );
+      });
+      if (progressIdx >= 0) targetIdx = progressIdx;
     }
-  }, [hasNextEp, hasNextDrama, currentEpNumber, handleSaveProgress]);
 
-  const handlePrev = useCallback(() => {
-    if (hasPrevEp) {
-      const prevEp = currentEpNumber - 1;
-      setCurrentEpNumber(prevEp);
-      handleSaveProgress(prevEp);
-    } else if (currentDramaIndex > 0) {
-      // Предыдущий сериал
-      setCurrentDramaIndex((prev) => prev - 1);
-      setCurrentEpNumber(1);
+    setActiveIndex(targetIdx);
+
+    // Мягко прокручиваем к стартовому элементу
+    if (containerRef.current && targetIdx > 0) {
+      const targetElem = itemRefs.current[targetIdx];
+      if (targetElem) {
+        targetElem.scrollIntoView({ behavior: "instant" });
+      }
     }
-  }, [hasPrevEp, currentDramaIndex, currentEpNumber, handleSaveProgress]);
+  }, [initialDramaId, initialEpisodeNumber, feedItems]);
 
-  // Обработка свайпов на тач-устройствах
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
-  };
+  // Следим за скроллом и определяем активную видимую серию через scroll-событие
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current) return;
+    const { scrollTop, clientHeight } = containerRef.current;
+    if (clientHeight === 0) return;
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartY.current === null) return;
-    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
-    touchStartY.current = null;
+    // Вычисляем текущий индекс по высоте скролла
+    const newIndex = Math.round(scrollTop / clientHeight);
+    if (newIndex >= 0 && newIndex < feedItems.length && newIndex !== activeIndex) {
+      setActiveIndex(newIndex);
+      if (showSwipeHint) setShowSwipeHint(false);
 
-    // Свайп вверх -> следующая серия
-    if (deltaY < -65) {
-      handleNext();
+      // Сохраняем прогресс текущего сериала
+      const activeItem = feedItems[newIndex];
+      if (activeItem) {
+        saveProgress.mutate({
+          dramaId: activeItem.drama.id,
+          episodeId: activeItem.episode.id,
+          episodeNumber: activeItem.episodeNumber,
+        });
+      }
     }
-    // Свайп вниз -> предыдущая серия
-    else if (deltaY > 65) {
-      handlePrev();
-    }
-  };
+  }, [activeIndex, feedItems, saveProgress, showSwipeHint]);
 
-  // Колёсико мыши и стрелки клавиатуры на ПК
+  // Прокрутка к следующему видео
+  const scrollToNext = useCallback(() => {
+    if (activeIndex < feedItems.length - 1) {
+      const nextIdx = activeIndex + 1;
+      itemRefs.current[nextIdx]?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [activeIndex, feedItems.length]);
+
+  // Прокрутка к предыдущему видео
+  const scrollToPrev = useCallback(() => {
+    if (activeIndex > 0) {
+      const prevIdx = activeIndex - 1;
+      itemRefs.current[prevIdx]?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [activeIndex]);
+
+  // Управление клавишами на ПК
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown" || e.key === "PageDown") {
         e.preventDefault();
-        handleNext();
+        scrollToNext();
       } else if (e.key === "ArrowUp" || e.key === "PageUp") {
         e.preventDefault();
-        handlePrev();
+        scrollToPrev();
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleNext, handlePrev]);
+  }, [scrollToNext, scrollToPrev]);
 
-  if (!activeDramaSummary) {
+  // Поделиться ссылкой
+  const handleShare = (item: FeedItem) => {
+    const url = `${window.location.origin}/dramas/${item.drama.id}`;
+    if (navigator.share) {
+      navigator.share({
+        title: item.drama.title,
+        text: `Смотри сериал "${item.drama.title}" в CaloriSnap!`,
+        url,
+      }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      });
+    }
+  };
+
+  const activeItem = feedItems[activeIndex];
+
+  if (feedItems.length === 0) {
     return (
-      <div className="flex h-96 items-center justify-center text-center p-6 text-muted-foreground">
-        Сериалы не найдены
+      <div className="flex h-96 flex-col items-center justify-center rounded-3xl border border-border bg-card p-6 text-center text-muted-foreground">
+        <Film className="h-10 w-10 mb-3 opacity-60" />
+        <p className="text-sm font-bold text-foreground">Сериалы не найдены</p>
+        <p className="text-xs mt-1">Попробуйте сбросить фильтры поиска</p>
       </div>
     );
   }
 
   return (
-    <div
-      ref={containerRef}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      className="relative h-[calc(100dvh-11rem)] sm:h-[calc(100dvh-12rem)] w-full rounded-3xl overflow-hidden bg-black shadow-2xl border border-border/40 select-none"
-    >
-      {/* Главный видеоплеер активной серии */}
-      <DramaVideoPlayer
-        dramaTitle={activeDramaSummary.title}
-        totalEpisodes={episodes.length || activeDramaSummary.totalEpisodes}
-        currentEpisode={currentEpisode}
-        hasNextEpisode={hasNextEp || hasNextDrama}
-        hasPrevEpisode={hasPrevEp || currentDramaIndex > 0}
-        onNextEpisode={handleNext}
-        onPrevEpisode={handlePrev}
-        onOpenEpisodePicker={() => setIsDrawerOpen(true)}
-        onEpisodeCompleted={(epNum) => handleSaveProgress(epNum, true)}
-      />
-
-      {/* Правая вертикальная панель действий (в стиле TikTok / DramaBox) */}
-      <div className="absolute right-3 bottom-14 z-30 flex flex-col items-center gap-3.5 pointer-events-auto">
-        {/* Избранное / Лайк */}
-        <button
-          type="button"
-          onClick={() => toggleFavorite.mutate(activeDramaSummary.id)}
-          className="group flex flex-col items-center gap-1 active:scale-90 transition-transform"
-          aria-label={activeDramaSummary.isFavorite ? "В избранном" : "Добавить в избранное"}
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg group-hover:bg-black/80">
-            <Star
-              className={`h-5 w-5 transition-colors ${
-                activeDramaSummary.isFavorite
-                  ? "fill-amber-400 text-amber-400"
-                  : "text-white"
-              }`}
-            />
-          </span>
-          <span className="text-[10px] font-bold text-white drop-shadow-md">
-            {activeDramaSummary.isFavorite ? "В избранном" : "В закладки"}
-          </span>
-        </button>
-
-        {/* Список всех серий */}
-        <button
-          type="button"
-          onClick={() => setIsDrawerOpen(true)}
-          className="group flex flex-col items-center gap-1 active:scale-90 transition-transform"
-          aria-label="Открыть список серий"
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg group-hover:bg-black/80">
-            <ListVideo className="h-5 w-5" />
-          </span>
-          <span className="text-[10px] font-bold text-white drop-shadow-md">
-            {currentEpNumber}/{episodes.length || activeDramaSummary.totalEpisodes}
-          </span>
-        </button>
-
-        {/* Быстрый свайп-переход вверх/вниз */}
-        <div className="flex flex-col gap-1.5 pt-1">
-          {hasPrevEp && (
-            <button
-              type="button"
-              onClick={handlePrev}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 border border-white/15 text-white/80 hover:text-white backdrop-blur-md active:scale-90 transition-all"
-              aria-label="Предыдущая серия"
-            >
-              <ChevronUp className="h-4 w-4" />
-            </button>
-          )}
-
-          {(hasNextEp || hasNextDrama) && (
-            <button
-              type="button"
-              onClick={handleNext}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 border border-white/15 text-white/80 hover:text-white backdrop-blur-md active:scale-90 transition-all"
-              aria-label="Следующая серия"
-            >
-              <ChevronDown className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Нижняя плашка с описанием и тегами */}
-      <div className="absolute left-3 bottom-14 right-16 z-20 pointer-events-none">
-        <div className="flex items-center gap-2 mb-1.5">
-          {activeDramaSummary.isAiGenerated && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-violet-600/90 border border-violet-400/40 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-md shadow-sm">
-              <Sparkles className="h-3 w-3" />
-              AI
-            </span>
-          )}
-          {activeDramaSummary.hasRussianVoiceover && (
-            <span className="rounded-full bg-emerald-600/80 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-md">
-              Озвучка
-            </span>
-          )}
-        </div>
-        <h3 className="text-sm font-bold text-white line-clamp-1 drop-shadow-md">
-          {activeDramaSummary.title}
-        </h3>
-        <p className="text-xs text-white/80 line-clamp-1 drop-shadow-sm mt-0.5">
-          {currentEpisode.title}
-        </p>
-      </div>
-
-      {/* Выдвижное меню со списком эпизодов */}
-      <EpisodePickerDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        dramaTitle={activeDramaSummary.title}
-        episodes={episodes}
-        currentEpisodeNumber={currentEpNumber}
-        lastWatchedEpisodeNumber={activeDramaSummary.progress?.lastEpisodeNumber || 0}
-        onSelectEpisode={(ep) => {
-          setCurrentEpNumber(ep.episodeNumber);
-          handleSaveProgress(ep.episodeNumber);
+    <div className="relative w-full h-[calc(100dvh-12.5rem)] min-h-[480px] max-h-[820px] rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/10 select-none">
+      {/* Вертикальный TikTok-контейнер со строгим scroll-snap */}
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="h-full w-full overflow-y-scroll snap-y snap-mandatory scroll-smooth touch-pan-y overscroll-contain scrollbar-none"
+        style={{
+          scrollSnapType: "y mandatory",
+          WebkitOverflowScrolling: "touch",
         }}
-      />
+      >
+        {feedItems.map((item, idx) => {
+          const isActive = idx === activeIndex;
+          // Рендерим iframe только для активной серии и соседних, чтобы не перегружать сеть и память
+          const shouldMountVideo = Math.abs(idx - activeIndex) <= 1;
+
+          return (
+            <div
+              key={item.key}
+              ref={(el) => {
+                itemRefs.current[idx] = el;
+              }}
+              className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-black flex items-center justify-center"
+            >
+              {/* Фоновое превью / Постер */}
+              <img
+                src={item.episode.thumbnailUrl || item.drama.coverUrl}
+                alt={item.episode.title}
+                className="absolute inset-0 h-full w-full object-cover blur-md opacity-35 scale-105 pointer-events-none"
+              />
+
+              {/* Видео-плеер или карточка ожидания */}
+              {shouldMountVideo ? (
+                <TikTokEpisodePlayer
+                  item={item}
+                  isActive={isActive}
+                  isMuted={isMuted}
+                  onEnded={scrollToNext}
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-white/70">
+                  <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                  <span className="text-xs font-semibold">Серия {item.episodeNumber}</span>
+                </div>
+              )}
+
+              {/* Затемняющий градиент сверху и снизу в стиле TikTok */}
+              <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/85 via-black/35 to-transparent pointer-events-none" />
+              <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-none" />
+
+              {/* Правая плавающая панель кнопок (TikTok Style) */}
+              <div className="absolute right-3 bottom-8 z-30 flex flex-col items-center gap-3.5 pointer-events-auto">
+                {/* Аватар / Постер сериала с градиентным вращением */}
+                <button
+                  type="button"
+                  onClick={() => setIsDrawerOpen(true)}
+                  className="relative group active:scale-90 transition-transform"
+                  aria-label="Все серии"
+                >
+                  <div className="h-11 w-11 rounded-full p-0.5 bg-gradient-to-tr from-violet-600 via-primary to-fuchsia-500 shadow-xl">
+                    <img
+                      src={item.drama.coverUrl}
+                      alt={item.drama.title}
+                      className="h-full w-full rounded-full object-cover"
+                    />
+                  </div>
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-primary px-1.5 py-0.2 text-[9px] font-black text-primary-foreground shadow-sm">
+                    {item.episodeNumber}/{item.totalEpisodesInDrama}
+                  </span>
+                </button>
+
+                {/* Кнопка "В закладки / Избранное" */}
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite.mutate(item.drama.id)}
+                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  aria-label={item.drama.isFavorite ? "В избранном" : "В закладки"}
+                >
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
+                    <Star
+                      className={`h-5 w-5 transition-colors ${
+                        item.drama.isFavorite ? "fill-amber-400 text-amber-400" : "text-white"
+                      }`}
+                    />
+                  </span>
+                  <span className="text-[10px] font-bold text-white drop-shadow-md">
+                    {item.drama.isFavorite ? "Сохранено" : "В закладки"}
+                  </span>
+                </button>
+
+                {/* Кнопка выбора серий */}
+                <button
+                  type="button"
+                  onClick={() => setIsDrawerOpen(true)}
+                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  aria-label="Список серий"
+                >
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
+                    <ListVideo className="h-5 w-5" />
+                  </span>
+                  <span className="text-[10px] font-bold text-white drop-shadow-md">
+                    Серии
+                  </span>
+                </button>
+
+                {/* Переключатель звука */}
+                <button
+                  type="button"
+                  onClick={() => setIsMuted((prev) => !prev)}
+                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  aria-label={isMuted ? "Включить звук" : "Выключить звук"}
+                >
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
+                    {isMuted ? (
+                      <VolumeX className="h-5 w-5 text-amber-400" />
+                    ) : (
+                      <Volume2 className="h-5 w-5" />
+                    )}
+                  </span>
+                  <span className="text-[10px] font-bold text-white drop-shadow-md">
+                    {isMuted ? "Звук выкл" : "Звук"}
+                  </span>
+                </button>
+
+                {/* Кнопка поделиться */}
+                <button
+                  type="button"
+                  onClick={() => handleShare(item)}
+                  className="flex flex-col items-center gap-1 active:scale-85 transition-transform"
+                  aria-label="Поделиться сериалом"
+                >
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white backdrop-blur-md shadow-lg hover:bg-black/80">
+                    {copiedLink ? (
+                      <Check className="h-5 w-5 text-emerald-400" />
+                    ) : (
+                      <Share2 className="h-5 w-5" />
+                    )}
+                  </span>
+                  <span className="text-[10px] font-bold text-white drop-shadow-md">
+                    {copiedLink ? "Скопировано" : "Ссылка"}
+                  </span>
+                </button>
+
+                {/* Стрелки быстрой навигации вверх/вниз */}
+                <div className="flex flex-col gap-1.5 pt-1">
+                  {idx > 0 && (
+                    <button
+                      type="button"
+                      onClick={scrollToPrev}
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 border border-white/15 text-white/80 hover:text-white backdrop-blur-md active:scale-90 transition-all"
+                      aria-label="Предыдущая серия"
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </button>
+                  )}
+                  {idx < feedItems.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={scrollToNext}
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 border border-white/15 text-white/80 hover:text-white backdrop-blur-md active:scale-90 transition-all"
+                      aria-label="Следующая серия"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Нижняя информация (TikTok Style) */}
+              <div className="absolute left-3.5 bottom-6 right-20 z-20 pointer-events-none">
+                {/* Бейдж автора / AI */}
+                <div className="flex items-center gap-2 mb-2">
+                  {item.drama.isAiGenerated ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 border border-white/20 px-2.5 py-0.5 text-[11px] font-black text-white shadow-md backdrop-blur-md">
+                      <Sparkles className="h-3 w-3" />
+                      AI Сериал
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/90 border border-white/20 px-2.5 py-0.5 text-[11px] font-bold text-primary-foreground shadow-md backdrop-blur-md">
+                      <Film className="h-3 w-3" />
+                      Мини-дорама
+                    </span>
+                  )}
+
+                  {item.drama.hasRussianVoiceover && (
+                    <span className="rounded-full bg-emerald-600/90 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
+                      RU Озвучка
+                    </span>
+                  )}
+                </div>
+
+                {/* Название сериала */}
+                <h3 className="text-base sm:text-lg font-black text-white line-clamp-1 drop-shadow-lg tracking-tight">
+                  {item.drama.title}
+                </h3>
+
+                {/* Название серии и номер */}
+                <p className="text-xs sm:text-sm text-white/95 font-semibold line-clamp-1 drop-shadow-md mt-0.5">
+                  Серия {item.episodeNumber}: {item.episode.title}
+                </p>
+
+                {/* Хэштеги сериала */}
+                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-bold text-white/80 drop-shadow-md">
+                  {item.drama.tags.slice(0, 3).map((tag) => (
+                    <span key={tag}>#{tag.replace(/\s+/g, "")}</span>
+                  ))}
+                  <span>#ВсеСерииПодряд</span>
+                </div>
+              </div>
+
+              {/* Нижняя полоса прогресса серии */}
+              <div className="absolute bottom-0 inset-x-0 h-1 bg-white/15 z-30">
+                <div
+                  className="h-full bg-gradient-to-r from-primary to-violet-500 transition-all duration-300"
+                  style={{
+                    width: `${Math.round(
+                      (item.episodeNumber / item.totalEpisodesInDrama) * 100,
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Анимация подсказки первого свайпа ("Листайте вверх") */}
+      {showSwipeHint && (
+        <div
+          onClick={() => {
+            setShowSwipeHint(false);
+            scrollToNext();
+          }}
+          className="absolute inset-x-0 bottom-24 z-40 flex flex-col items-center justify-center gap-1 pointer-events-auto cursor-pointer animate-bounce"
+        >
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/70 border border-white/20 text-white backdrop-blur-md shadow-xl">
+            <ChevronUp className="h-5 w-5" />
+          </div>
+          <span className="rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/90 backdrop-blur-md border border-white/10 shadow-lg">
+            Листайте вверх для следующей серии
+          </span>
+        </div>
+      )}
+
+      {/* Выдвижная шторка выбора серий */}
+      {activeItem && (
+        <EpisodePickerDrawer
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          dramaTitle={activeItem.drama.title}
+          episodes={activeItem.drama.episodes || []}
+          currentEpisodeNumber={activeItem.episodeNumber}
+          lastWatchedEpisodeNumber={
+            activeItem.drama.progress?.lastEpisodeNumber || 0
+          }
+          onSelectEpisode={(selectedEp) => {
+            // Находим целевой индекс в ленте
+            const targetIdx = feedItems.findIndex(
+              (it) =>
+                it.drama.id === activeItem.drama.id &&
+                it.episodeNumber === selectedEp.episodeNumber,
+            );
+            if (targetIdx >= 0) {
+              itemRefs.current[targetIdx]?.scrollIntoView({ behavior: "smooth" });
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Отдельный компонент плеера для одной карточки ленты TikTok.
+ * Загружает и воспроизводит iframe только когда карточка активна (в фокусе экрана).
+ */
+function TikTokEpisodePlayer({
+  item,
+  isActive,
+  isMuted,
+  onEnded,
+}: {
+  item: FeedItem;
+  isActive: boolean;
+  isMuted: boolean;
+  onEnded: () => void;
+}) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    setIsLoading(true);
+    setHasError(false);
+  }, [item.episode.videoId]);
+
+  // Слушаем события от плеера
+  useEffect(() => {
+    if (!isActive) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      if (typeof event.data !== "string") return;
+      try {
+        const parsed = JSON.parse(event.data);
+        if (parsed.event === "onReady") {
+          setIsLoading(false);
+        } else if (parsed.event === "onStateChange") {
+          // 0 = ENDED (серия закончилась -> автопереход)
+          if (parsed.info === 0 || parsed.data === 0) {
+            onEnded();
+          } else if (parsed.info === 1 || parsed.data === 1) {
+            setIsLoading(false);
+          }
+        } else if (parsed.event === "onError") {
+          setHasError(true);
+          setIsLoading(false);
+        }
+      } catch {
+        // Игнорируем не-JSON сообщения
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [isActive, onEnded]);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const embedUrl = `https://www.youtube.com/embed/${item.episode.videoId}?autoplay=${
+    isActive ? 1 : 0
+  }&mute=${isMuted ? 1 : 0}&playsinline=1&rel=0&modestbranding=1&enablejsapi=1${
+    origin ? `&origin=${encodeURIComponent(origin)}` : ""
+  }`;
+
+  return (
+    <div className="relative h-full w-full flex items-center justify-center">
+      {isActive ? (
+        <iframe
+          ref={iframeRef}
+          src={embedUrl}
+          title={item.episode.title}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+          allowFullScreen
+          onLoad={() => setIsLoading(false)}
+          className="h-full w-full object-cover pointer-events-auto"
+        />
+      ) : (
+        // Карточка не в фокусе — отображаем только красивое превью
+        <div className="relative h-full w-full">
+          <img
+            src={item.episode.thumbnailUrl || item.drama.coverUrl}
+            alt={item.episode.title}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/80 text-white shadow-xl">
+              <Play className="h-6 w-6 fill-white ml-0.5" />
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Индикатор загрузки */}
+      {isActive && isLoading && !hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60 pointer-events-none backdrop-blur-2xs">
+          <div className="flex flex-col items-center gap-2 text-white">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="text-xs font-semibold">Загрузка серии {item.episodeNumber}...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Ошибка встраивания */}
+      {isActive && hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6 text-center z-20">
+          <AlertCircle className="h-10 w-10 text-amber-500 mb-2" />
+          <h4 className="text-sm font-bold text-white mb-1">
+            Серия {item.episodeNumber} временно недоступна
+          </h4>
+          <p className="text-xs text-white/70 max-w-xs mb-4">
+            Правообладатель ограничил внешнее воспроизведение этой серии.
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={onEnded}
+              className="rounded-2xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-md active:scale-95 transition-all"
+            >
+              Смотреть следующую серию
+            </button>
+            <a
+              href={`https://www.youtube.com/watch?v=${item.episode.videoId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary underline"
+            >
+              Открыть на YouTube
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -21,6 +21,7 @@ export interface Drama {
   // User-specific properties when authenticated
   progress?: DramaProgress | null;
   isFavorite?: boolean;
+  episodes?: DramaEpisode[];
 }
 
 export interface DramaEpisode {

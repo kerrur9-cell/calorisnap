@@ -21,7 +21,7 @@ type ViewMode = "feed" | "catalog";
 export default function DramasPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("feed");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTag, setActiveTag] = useState("Все");
+  const [activeTag, setActiveTag] = useState("AI-сериалы");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [selectedDramaForFeed, setSelectedDramaForFeed] = useState<string | undefined>();
 
@@ -94,6 +94,71 @@ export default function DramasPage() {
           </button>
         </div>
       </header>
+
+      {/* Быстрые фильтры в режиме Ленты */}
+      {viewMode === "feed" && (
+        <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4">
+          <button
+            type="button"
+            onClick={() => {
+              setFavoriteOnly(false);
+              setActiveTag("AI-сериалы");
+            }}
+            className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
+              !favoriteOnly && activeTag === "AI-сериалы"
+                ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm"
+                : "bg-muted/80 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Sparkles className="h-3 w-3" />
+            AI-сериалы
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFavoriteOnly(false);
+              setActiveTag("Все");
+            }}
+            className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
+              !favoriteOnly && activeTag === "Все"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/80 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Все сериалы
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFavoriteOnly((prev) => !prev);
+            }}
+            className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
+              favoriteOnly
+                ? "bg-amber-500 text-white shadow-sm"
+                : "bg-muted/80 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            ⭐ Избранное
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFavoriteOnly(false);
+              setActiveTag("Русская озвучка");
+            }}
+            className={`shrink-0 inline-flex items-center gap-1 h-7.5 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
+              !favoriteOnly && activeTag === "Русская озвучка"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/80 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            RU Озвучка
+          </button>
+        </div>
+      )}
 
       {/* Режим 1: Вертикальная бесконечная ЛЕНТА */}
       {viewMode === "feed" && (
