@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { Drama, DramaEpisode } from "@/lib/dramas/types";
 import { EpisodePickerDrawer } from "./EpisodePickerDrawer";
+import { DedicatedDramaPlayer } from "./DedicatedDramaPlayer";
 import { useSaveDramaProgress, useToggleFavorite } from "@/hooks/useDramas";
 import { useDramaPlayer } from "@/context/DramaPlayerContext";
 
@@ -268,16 +269,20 @@ export function DramaFeed({
                 className="absolute inset-0 h-full w-full object-cover blur-md opacity-35 scale-105 pointer-events-none"
               />
 
-              {/* Видео-плеер или карточка ожидания */}
+              {/* Выделенный изолированный видео-плеер или карточка ожидания */}
               {shouldMountVideo ? (
-                <TikTokEpisodePlayer
-                  key={`player-${item.episode.videoId}`}
-                  item={item}
+                <DedicatedDramaPlayer
+                  key={`feed-player-${item.episode.videoId}`}
+                  videoId={item.episode.videoId}
+                  title={item.episode.title}
+                  thumbnailUrl={item.episode.thumbnailUrl || item.drama.coverUrl}
                   isMuted={isMuted}
+                  autoplay={true}
                   onEnded={() => {
                     markWatched(item.drama.id, item.episodeNumber, true);
                     scrollToNext();
                   }}
+                  className="h-full w-full object-cover"
                 />
               ) : (
                 <div className="relative h-full w-full flex items-center justify-center">
@@ -556,114 +561,6 @@ export function DramaFeed({
             }
           }}
         />
-      )}
-    </div>
-  );
-}
-
-/**
- * Изолированный видео-плеер для АКТИВНОЙ карточки ленты TikTok.
- * Загружается ровно в 1 экземпляре.
- */
-function TikTokEpisodePlayer({
-  item,
-  isMuted,
-  onEnded,
-}: {
-  item: FeedItem;
-  isMuted: boolean;
-  onEnded: () => void;
-}) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  useEffect(() => {
-    setIsLoading(true);
-    setHasError(false);
-  }, [item.episode.videoId]);
-
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (typeof event.data !== "string") return;
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.event === "onReady") {
-          setIsLoading(false);
-        } else if (parsed.event === "onStateChange") {
-          if (parsed.info === 0 || parsed.data === 0) {
-            onEnded();
-          } else if (parsed.info === 1 || parsed.data === 1) {
-            setIsLoading(false);
-          }
-        } else if (parsed.event === "onError") {
-          setHasError(true);
-          setIsLoading(false);
-        }
-      } catch {}
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [onEnded]);
-
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const embedUrl = `https://www.youtube.com/embed/${item.episode.videoId}?autoplay=1&mute=${
-    isMuted ? 1 : 0
-  }&playsinline=1&rel=0&modestbranding=1&enablejsapi=1${
-    origin ? `&origin=${encodeURIComponent(origin)}` : ""
-  }`;
-
-  return (
-    <div className="relative h-full w-full flex items-center justify-center">
-      <iframe
-        ref={iframeRef}
-        src={embedUrl}
-        title={item.episode.title}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-        allowFullScreen
-        onLoad={() => setIsLoading(false)}
-        className="h-full w-full object-cover pointer-events-auto"
-      />
-
-      {/* Индикатор загрузки */}
-      {isLoading && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/60 pointer-events-none backdrop-blur-2xs">
-          <div className="flex flex-col items-center gap-2 text-white">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <span className="text-xs font-semibold">Загрузка серии {item.episodeNumber}...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Ошибка встраивания */}
-      {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6 text-center z-20">
-          <AlertCircle className="h-10 w-10 text-amber-500 mb-2" />
-          <h4 className="text-sm font-bold text-white mb-1">
-            Серия {item.episodeNumber} временно недоступна
-          </h4>
-          <p className="text-xs text-white/70 max-w-xs mb-4">
-            Правообладатель ограничил внешнее воспроизведение этой серии.
-          </p>
-          <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={onEnded}
-              className="rounded-2xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-md active:scale-95 transition-all"
-            >
-              Смотреть следующую серию
-            </button>
-            <a
-              href={`https://www.youtube.com/watch?v=${item.episode.videoId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-primary underline"
-            >
-              Открыть на YouTube
-            </a>
-          </div>
-        </div>
       )}
     </div>
   );
