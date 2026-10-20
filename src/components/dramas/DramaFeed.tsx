@@ -57,19 +57,23 @@ export function DramaFeed({
   const {
     isWatched,
     markWatched,
+    isMiniPlayerOpen,
     openMiniPlayer,
-    startBackgroundAudio,
     shuffleDramas,
   } = useDramaPlayer();
 
-  // Рандомизированный порядок сериалов (непросмотренные идут случайно первыми)
+  // 1. Стабильная последовательность: перемешивается ровно ОДИН раз при загрузке или по кнопке
   const [dramasSequence, setDramasSequence] = useState<Drama[]>(() =>
     shuffleDramas(initialDramas)
   );
 
-  // Обновляем последовательность при смене initialDramas
+  const prevLenRef = useRef(initialDramas.length);
   useEffect(() => {
-    setDramasSequence(shuffleDramas(initialDramas));
+    // Если список впервые загрузился из сети (был пуст, стал с данными)
+    if (prevLenRef.current === 0 && initialDramas.length > 0) {
+      setDramasSequence(shuffleDramas(initialDramas));
+    }
+    prevLenRef.current = initialDramas.length;
   }, [initialDramas, shuffleDramas]);
 
   // Ручное перемешивание ленты ("🔀 Перемешать")
@@ -82,8 +86,8 @@ export function DramaFeed({
     }
   }, [initialDramas, shuffleDramas]);
 
-  // Разворачиваем сериалы в единую последовательную ленту эпизодов (TikTok-формат)
-  // Внутри каждого сериала серии идут строго по порядку: 1 -> 2 -> ... -> N
+  // Разворачиваем сериалы в единую последовательную ленту эпизодов
+  // Серии внутри сериала идут строго 1 -> 2 -> ... -> N
   const feedItems: FeedItem[] = useMemo(() => {
     const list: FeedItem[] = [];
     for (const drama of dramasSequence) {
@@ -104,7 +108,7 @@ export function DramaFeed({
     return list;
   }, [dramasSequence]);
 
-  // Вычисляем стартовый индекс при открытии (например, выбранный сериал)
+  // Вычисляем стартовый индекс при открытии (например, выбранный сериал из каталога)
   useEffect(() => {
     if (feedItems.length === 0) return;
 
@@ -130,7 +134,9 @@ export function DramaFeed({
     }
   }, [initialDramaId, initialEpisodeNumber, feedItems]);
 
-  // Следим за скроллом и определяем активную серию
+  // Следим за скроллом и безопасно переключаем активную серию
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
     const { scrollTop, clientHeight } = containerRef.current;
@@ -141,23 +147,20 @@ export function DramaFeed({
       setActiveIndex(newIndex);
       if (showSwipeHint) setShowSwipeHint(false);
 
-      // Фоновое аудио keepalive
-      startBackgroundAudio();
-
-      // Сохраняем прогресс текущего сериала
-      const activeItem = feedItems[newIndex];
-      if (activeItem) {
-        // Умный трекер: автоматически фиксируем просмотр через 4 секунды
-        markWatched(activeItem.drama.id, activeItem.episodeNumber, true);
-
-        saveProgress.mutate({
-          dramaId: activeItem.drama.id,
-          episodeId: activeItem.episode.id,
-          episodeNumber: activeItem.episodeNumber,
-        });
-      }
+      // Сохраняем прогресс с дебаунсом, чтобы не спамить
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = setTimeout(() => {
+        const activeItem = feedItems[newIndex];
+        if (activeItem) {
+          saveProgress.mutate({
+            dramaId: activeItem.drama.id,
+            episodeId: activeItem.episode.id,
+            episodeNumber: activeItem.episodeNumber,
+          });
+        }
+      }, 500);
     }
-  }, [activeIndex, feedItems, saveProgress, showSwipeHint, startBackgroundAudio, markWatched]);
+  }, [activeIndex, feedItems, saveProgress, showSwipeHint]);
 
   // Прокрутка к следующему видео
   const scrollToNext = useCallback(() => {
@@ -246,7 +249,8 @@ export function DramaFeed({
       >
         {feedItems.map((item, idx) => {
           const isActive = idx === activeIndex;
-          const shouldMountVideo = Math.abs(idx - activeIndex) <= 1;
+          // СТРОГОЕ ПРАВИЛО: ровно ОДНО видео монтируется в DOM. Никаких наложений звука!
+          const shouldMountVideo = isActive && !isMiniPlayerOpen;
           const watched = isWatched(item.drama.id, item.episodeNumber);
 
           return (
@@ -267,8 +271,8 @@ export function DramaFeed({
               {/* Видео-плеер или карточка ожидания */}
               {shouldMountVideo ? (
                 <TikTokEpisodePlayer
+                  key={`player-${item.episode.videoId}`}
                   item={item}
-                  isActive={isActive}
                   isMuted={isMuted}
                   onEnded={() => {
                     markWatched(item.drama.id, item.episodeNumber, true);
@@ -276,9 +280,23 @@ export function DramaFeed({
                   }}
                 />
               ) : (
-                <div className="flex flex-col items-center gap-2 text-white/70">
-                  <Loader2 className="h-7 w-7 animate-spin text-primary" />
-                  <span className="text-xs font-semibold">Серия {item.episodeNumber}</span>
+                <div className="relative h-full w-full flex items-center justify-center">
+                  <img
+                    src={item.episode.thumbnailUrl || item.drama.coverUrl}
+                    alt={item.episode.title}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/80 text-white shadow-xl">
+                      <Play className="h-6 w-6 fill-white ml-0.5" />
+                    </span>
+                    {isMiniPlayerOpen && isActive && (
+                      <span className="rounded-full bg-black/70 px-3 py-1 text-[11px] font-bold text-violet-300 border border-violet-500/30">
+                        Воспроизводится в окне
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -544,16 +562,15 @@ export function DramaFeed({
 }
 
 /**
- * Отдельный компонент плеера для одной карточки ленты TikTok.
+ * Изолированный видео-плеер для АКТИВНОЙ карточки ленты TikTok.
+ * Загружается ровно в 1 экземпляре.
  */
 function TikTokEpisodePlayer({
   item,
-  isActive,
   isMuted,
   onEnded,
 }: {
   item: FeedItem;
-  isActive: boolean;
   isMuted: boolean;
   onEnded: () => void;
 }) {
@@ -567,8 +584,6 @@ function TikTokEpisodePlayer({
   }, [item.episode.videoId]);
 
   useEffect(() => {
-    if (!isActive) return;
-
     const handleMessage = (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
       try {
@@ -590,44 +605,29 @@ function TikTokEpisodePlayer({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [isActive, onEnded]);
+  }, [onEnded]);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const embedUrl = `https://www.youtube.com/embed/${item.episode.videoId}?autoplay=${
-    isActive ? 1 : 0
-  }&mute=${isMuted ? 1 : 0}&playsinline=1&rel=0&modestbranding=1&enablejsapi=1${
+  const embedUrl = `https://www.youtube.com/embed/${item.episode.videoId}?autoplay=1&mute=${
+    isMuted ? 1 : 0
+  }&playsinline=1&rel=0&modestbranding=1&enablejsapi=1${
     origin ? `&origin=${encodeURIComponent(origin)}` : ""
   }`;
 
   return (
     <div className="relative h-full w-full flex items-center justify-center">
-      {isActive ? (
-        <iframe
-          ref={iframeRef}
-          src={embedUrl}
-          title={item.episode.title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-          allowFullScreen
-          onLoad={() => setIsLoading(false)}
-          className="h-full w-full object-cover pointer-events-auto"
-        />
-      ) : (
-        <div className="relative h-full w-full">
-          <img
-            src={item.episode.thumbnailUrl || item.drama.coverUrl}
-            alt={item.episode.title}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/80 text-white shadow-xl">
-              <Play className="h-6 w-6 fill-white ml-0.5" />
-            </span>
-          </div>
-        </div>
-      )}
+      <iframe
+        ref={iframeRef}
+        src={embedUrl}
+        title={item.episode.title}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+        allowFullScreen
+        onLoad={() => setIsLoading(false)}
+        className="h-full w-full object-cover pointer-events-auto"
+      />
 
-      {isActive && isLoading && !hasError && (
+      {/* Индикатор загрузки */}
+      {isLoading && !hasError && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/60 pointer-events-none backdrop-blur-2xs">
           <div className="flex flex-col items-center gap-2 text-white">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -636,7 +636,8 @@ function TikTokEpisodePlayer({
         </div>
       )}
 
-      {isActive && hasError && (
+      {/* Ошибка встраивания */}
+      {hasError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6 text-center z-20">
           <AlertCircle className="h-10 w-10 text-amber-500 mb-2" />
           <h4 className="text-sm font-bold text-white mb-1">

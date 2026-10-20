@@ -38,9 +38,6 @@ interface DramaPlayerContextValue {
   playNextInMini: () => void;
   playPrevInMini: () => void;
 
-  // Фоновое аудио / Keepalive
-  startBackgroundAudio: () => void;
-
   // Рандомизация ленты
   shuffleDramas: (dramas: Drama[]) => Drama[];
 }
@@ -52,12 +49,16 @@ const STORAGE_KEY = "calorisnap_watched_episodes_v1";
 export function DramaPlayerProvider({ children }: { children: React.ReactNode }) {
   // 1. Умный трекер просмотренных серий (мгновенное сохранение в localStorage)
   const [watchedMap, setWatchedMap] = useState<Record<string, boolean>>({});
+  const watchedMapRef = useRef<Record<string, boolean>>({});
+  watchedMapRef.current = watchedMap;
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        setWatchedMap(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setWatchedMap(parsed);
+        watchedMapRef.current = parsed;
       }
     } catch {
       // Игнорируем ошибки квоты или JSON
@@ -66,6 +67,7 @@ export function DramaPlayerProvider({ children }: { children: React.ReactNode })
 
   const markWatched = useCallback((dramaId: string, epNum: number, watched: boolean = true) => {
     setWatchedMap((prev) => {
+      if (prev[`${dramaId}:${epNum}`] === watched) return prev;
       const next = { ...prev, [`${dramaId}:${epNum}`]: watched };
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -131,7 +133,6 @@ export function DramaPlayerProvider({ children }: { children: React.ReactNode })
       setMiniItem(item);
       setIsMiniPlayerOpen(true);
       setIsMiniPlaying(true);
-      startBackgroundAudio();
       markWatched(item.drama.id, item.episodeNumber);
     },
     [markWatched]
@@ -177,26 +178,6 @@ export function DramaPlayerProvider({ children }: { children: React.ReactNode })
     }
   }, [miniItem]);
 
-  // 3. Фоновое воспроизведение (Media Session API + Invisible Audio Keepalive)
-  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  const startBackgroundAudio = useCallback(() => {
-    if (typeof window === "undefined") return;
-    try {
-      if (!bgAudioRef.current) {
-        // Создаем неслышимый аудиопоток (генерация тихого тона) для поддержания жизни процесса в фоне
-        const audio = new Audio();
-        // 1-секундный закольцованный беззвучный wav
-        audio.src =
-          "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-        audio.loop = true;
-        audio.volume = 0.01;
-        bgAudioRef.current = audio;
-      }
-      bgAudioRef.current.play().catch(() => {});
-    } catch {}
-  }, []);
-
   // Синхронизация с системным MediaSession (шторка блокировки телефона, гарнитура, фон)
   useEffect(() => {
     if (typeof window === "undefined" || !("mediaSession" in navigator) || !miniItem) return;
@@ -230,38 +211,42 @@ export function DramaPlayerProvider({ children }: { children: React.ReactNode })
     } catch {}
   }, [miniItem, playNextInMini, playPrevInMini]);
 
-  // 4. Умная рандомизация сериалов (непросмотренные идут в случайном порядке первыми)
-  const shuffleDramas = useCallback(
-    (dramas: Drama[]): Drama[] => {
-      if (!dramas || dramas.length <= 1) return dramas;
+  // 3. Стабильная рандомизация сериалов (не создает рекурсивных ре-рендеров)
+  const shuffleDramas = useCallback((dramas: Drama[]): Drama[] => {
+    if (!dramas || dramas.length <= 1) return dramas;
 
-      // Разделяем на завершённые и активные/новые
-      const unwatched: Drama[] = [];
-      const completed: Drama[] = [];
-
-      for (const d of dramas) {
-        if (isDramaCompleted(d)) {
-          completed.push(d);
-        } else {
-          unwatched.push(d);
-        }
+    const currentMap = watchedMapRef.current;
+    const isCompleted = (d: Drama) => {
+      if (!d.episodes || d.episodes.length === 0) return false;
+      let count = 0;
+      for (const k of Object.keys(currentMap)) {
+        if (k.startsWith(`${d.id}:`) && currentMap[k]) count++;
       }
+      return count >= d.totalEpisodes;
+    };
 
-      // Функция перемешивания Fisher-Yates
-      const shuffle = <T,>(arr: T[]): T[] => {
-        const copy = [...arr];
-        for (let i = copy.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [copy[i], copy[j]] = [copy[j], copy[i]];
-        }
-        return copy;
-      };
+    const unwatched: Drama[] = [];
+    const completed: Drama[] = [];
 
-      // Непросмотренные сериалы случайно перемешиваются первыми, просмотренные идут в конец
-      return [...shuffle(unwatched), ...shuffle(completed)];
-    },
-    [isDramaCompleted]
-  );
+    for (const d of dramas) {
+      if (isCompleted(d)) {
+        completed.push(d);
+      } else {
+        unwatched.push(d);
+      }
+    }
+
+    const shuffle = <T,>(arr: T[]): T[] => {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    };
+
+    return [...shuffle(unwatched), ...shuffle(completed)];
+  }, []);
 
   const value: DramaPlayerContextValue = {
     watchedMap,
@@ -279,7 +264,6 @@ export function DramaPlayerProvider({ children }: { children: React.ReactNode })
     setMiniPlaying: setIsMiniPlaying,
     playNextInMini,
     playPrevInMini,
-    startBackgroundAudio,
     shuffleDramas,
   };
 
