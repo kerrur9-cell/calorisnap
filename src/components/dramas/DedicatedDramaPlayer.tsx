@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AlertCircle } from "lucide-react";
 
 interface DedicatedDramaPlayerProps {
@@ -16,7 +16,7 @@ interface DedicatedDramaPlayerProps {
 /**
  * Изолированный выделенный видеоплеер для китайских ИИ-сериалов.
  * Поддерживает полноэкранный режим и вертикальный режим мини-окна (9:16).
- * Обеспечивает мгновенный запуск без зависающих оверлеев и бесконечной загрузки.
+ * Гарантирует АВТОМАТИЧЕСКИЙ ЗАПУСК без зависаний и необходимости ручного клика на каждой серии.
  */
 export function DedicatedDramaPlayer({
   videoId,
@@ -31,13 +31,94 @@ export function DedicatedDramaPlayer({
   const hasError = errorVideoId === videoId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Слушаем события от YouTube Player API для автоперехода
+  // Безопасная отправка команд в YouTube Player API через postMessage
+  const sendCommand = useCallback((func: string, args: unknown[] = []) => {
+    try {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: "command", func, args }),
+          "*"
+        );
+      }
+    } catch {
+      // Игнорируем редкие ограничения междоменных сообщений
+    }
+  }, []);
+
+  // Синхронизация звука при переключении props.isMuted
+  useEffect(() => {
+    if (isMuted) {
+      sendCommand("mute");
+    } else {
+      sendCommand("unMute");
+      sendCommand("setVolume", [100]);
+    }
+  }, [isMuted, sendCommand]);
+
+  // Обработчик загрузки iframe: инициализирует API и мгновенно активирует автоплей
+  const handleIframeLoad = useCallback(() => {
+    try {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: "listening" }),
+          "*"
+        );
+      }
+    } catch {}
+
+    if (autoplay) {
+      sendCommand("playVideo");
+      if (!isMuted) {
+        sendCommand("unMute");
+        sendCommand("setVolume", [100]);
+      } else {
+        sendCommand("mute");
+      }
+    }
+  }, [autoplay, isMuted, sendCommand]);
+
+  // Двойное подтверждение автоплея на мобильных устройствах с дебаунсом
+  useEffect(() => {
+    if (!autoplay) return;
+    const t1 = setTimeout(() => {
+      sendCommand("playVideo");
+      if (!isMuted) {
+        sendCommand("unMute");
+        sendCommand("setVolume", [100]);
+      }
+    }, 200);
+
+    const t2 = setTimeout(() => {
+      sendCommand("playVideo");
+      if (!isMuted) {
+        sendCommand("unMute");
+        sendCommand("setVolume", [100]);
+      }
+    }, 600);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [autoplay, isMuted, sendCommand, videoId]);
+
+  // Слушаем события от YouTube Player API
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
       try {
         const parsed = JSON.parse(event.data);
-        if (parsed.event === "onStateChange") {
+
+        // Когда плеер готов к воспроизведению
+        if (parsed.event === "onReady") {
+          if (autoplay) {
+            sendCommand("playVideo");
+            if (!isMuted) {
+              sendCommand("unMute");
+              sendCommand("setVolume", [100]);
+            }
+          }
+        } else if (parsed.event === "onStateChange") {
           // 0 = ENDED (серия закончилась -> автопереход к следующей)
           if (parsed.info === 0 || parsed.data === 0) {
             if (onEnded) onEnded();
@@ -52,14 +133,22 @@ export function DedicatedDramaPlayer({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onEnded, videoId]);
+  }, [autoplay, isMuted, onEnded, sendCommand, videoId]);
 
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=${
-    autoplay ? 1 : 0
-  }&mute=${isMuted ? 1 : 0}&playsinline=1&rel=0&modestbranding=1&enablejsapi=1`;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  // КЛЮЧ К АВТОПЛЕЮ:
+  // Начальный запрос всегда содержит mute=1, что гарантирует 100% обход строгой блокировки
+  // autoplay в мобильных браузерах (Safari iOS, Chrome Android).
+  // Сразу после монтирования postMessage unMute включает звук, если пользователь активировал его.
+  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
+    origin
+  )}&widget_referrer=${encodeURIComponent(origin)}`;
 
   return (
-    <div className={`relative h-full w-full overflow-hidden bg-black flex items-center justify-center ${className}`}>
+    <div
+      className={`relative h-full w-full overflow-hidden bg-black flex items-center justify-center ${className}`}
+    >
       {/* Фоновое превью постера */}
       {thumbnailUrl && (
         <img
@@ -69,12 +158,13 @@ export function DedicatedDramaPlayer({
         />
       )}
 
-      {/* Сам YouTube Iframe: монтируется и воспроизводится напрямую без блокирующих оверлеев */}
+      {/* Сам YouTube Iframe: монтируется и воспроизводится напрямую */}
       <iframe
         ref={iframeRef}
         key={`yt-player-${videoId}`}
         src={embedUrl}
         title={title}
+        onLoad={handleIframeLoad}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
         allowFullScreen
         className="h-full w-full object-cover pointer-events-auto relative z-10"

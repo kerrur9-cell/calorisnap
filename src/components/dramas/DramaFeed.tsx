@@ -63,7 +63,25 @@ export function DramaFeed({
   const [activeIndex, setActiveIndex] = useState(() =>
     findInitialFeedIndex(initialDramas, initialDramaId, initialEpisodeNumber)
   );
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const saved = localStorage.getItem("calorisnap_dramas_muted");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleMute = useCallback((forceState?: boolean) => {
+    setIsMuted((prev) => {
+      const next = typeof forceState === "boolean" ? forceState : !prev;
+      try {
+        localStorage.setItem("calorisnap_dramas_muted", String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -412,7 +430,13 @@ export function DramaFeed({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="relative h-full w-full flex items-center justify-center">
+                <div
+                  className="relative h-full w-full flex items-center justify-center cursor-pointer"
+                  onClick={() => {
+                    itemRefs.current[idx]?.scrollIntoView({ behavior: "smooth" });
+                    setActiveIndex(idx);
+                  }}
+                >
                   <img
                     src={item.episode.thumbnailUrl || item.drama.coverUrl}
                     alt={item.episode.title}
@@ -543,7 +567,7 @@ export function DramaFeed({
                 {/* Переключатель звука */}
                 <button
                   type="button"
-                  onClick={() => setIsMuted((prev) => !prev)}
+                  onClick={() => toggleMute()}
                   className="flex flex-col items-center gap-0.5 active:scale-85 transition-transform"
                   aria-label={isMuted ? "Включить звук" : "Выключить звук"}
                 >
@@ -619,6 +643,22 @@ export function DramaFeed({
                   <span className="rounded-full bg-emerald-600/90 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
                     RU Озвучка
                   </span>
+
+                  {/* Кнопка включения звука в стиле TikTok */}
+                  {isMuted && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleMute(false);
+                      }}
+                      className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-amber-500/95 hover:bg-amber-400 border border-amber-300/60 px-2.5 py-0.5 text-[10px] font-black text-black shadow-lg backdrop-blur-md active:scale-95 transition-all animate-pulse"
+                      title="Нажмите, чтобы включить звук"
+                    >
+                      <VolumeX className="h-3 w-3 text-black" />
+                      <span>Включить звук</span>
+                    </button>
+                  )}
 
                   {watched && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
