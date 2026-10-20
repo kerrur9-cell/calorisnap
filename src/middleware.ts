@@ -11,7 +11,7 @@ export async function middleware(request: NextRequest) {
     if (pathname === "/setup") return NextResponse.next();
     return NextResponse.redirect(new URL("/setup", request.url));
   }
-  if (pathname === "/privacy") return NextResponse.next();
+  if (pathname === "/privacy" || pathname === "/admin") return NextResponse.next();
   const { response, user } = await updateSession(request);
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   if (!user && !isPublic) {
@@ -30,5 +30,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|icons/|api/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|push-sw.js|offline.html|icons/|api/).*)"],
 };

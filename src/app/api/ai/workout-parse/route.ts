@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { generateGeminiJson } from "@/lib/ai/gemini";
+import { extractWorkout } from "@/lib/workout/extract";
+import { chooseWorkoutMachine } from "@/lib/workout/jev";
 import { calculateDetailedWorkout } from "@/lib/workout/calculator";
 
 export const maxDuration = 25;
@@ -89,13 +90,28 @@ export async function POST(req: Request) {
   "neutralCommentary": string
 }`;
 
-    const ai = await generateGeminiJson({
-      systemPrompt,
-      prompt: `Описание тренировки от пользователя: "${text}"`,
-      schema: aiExtractionSchema,
-      temperature: 0.1,
-      timeoutMs: 22_000,
-    });
+    const [extracted, selection] = await Promise.all([
+      extractWorkout(text, systemPrompt, aiExtractionSchema),
+      chooseWorkoutMachine(text),
+    ]);
+    const ai = { ...extracted };
+    if (selection?.machine) {
+      // Preserve walking/running distinctions in cardio names for ACSM.
+      if (selection.machine.category !== "cardio") {
+        ai.exerciseName = selection.machine.name;
+        ai.category = "machine";
+      }
+      ai.activityKey = selection.machine.id;
+      ai.targetMuscles = selection.machine.targetMuscles;
+      if (["assisted_pullup", "assisted_dips"].includes(selection.machine.id)) {
+        ai.weightKg = null;
+        ai.isAmbiguous = true;
+        ai.ambiguityNote = "В гравитроне вес стека — помощь противовеса, а не рабочий вес. Оценка калорий не учитывает величину помощи.";
+      }
+    } else if (selection?.needsClarification) {
+      ai.isAmbiguous = true;
+      ai.ambiguityNote = "Не удалось уверенно выбрать тренажёр. Проверьте название или выберите его вручную из каталога.";
+    }
 
     // Отдельный математический расчёт расхода калорий (Compendium MET + ACSM)
     const detailedCalculation = calculateDetailedWorkout({

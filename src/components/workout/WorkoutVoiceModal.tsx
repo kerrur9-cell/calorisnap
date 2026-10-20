@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import type { WorkoutEntry } from "@/lib/workout/types";
 import { calculateDetailedWorkout } from "@/lib/workout/calculator";
+import { useDialog } from "@/hooks/useDialog";
 
 interface WorkoutVoiceModalProps {
   isOpen: boolean;
@@ -83,6 +84,7 @@ export function WorkoutVoiceModal({
   userAge = 25,
   onAddWorkout,
 }: WorkoutVoiceModalProps) {
+  const dialogRef = useDialog(isOpen, onClose);
   const [inputText, setInputText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -191,6 +193,7 @@ export function WorkoutVoiceModal({
 
     try {
       const res = await fetch("/api/ai/workout-parse", {
+        signal: AbortSignal.timeout(26000),
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -202,7 +205,7 @@ export function WorkoutVoiceModal({
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => { throw new Error("Сервер не ответил. Попробуйте ещё раз."); });
       if (!res.ok) {
         throw new Error(data.error || "Не удалось распознать упражнение");
       }
@@ -217,7 +220,7 @@ export function WorkoutVoiceModal({
       setEditReps(data.reps ?? null);
       setEditLoadWeight(data.weightKg ?? null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Ошибка распознавания");
+      setError(err instanceof Error && err.name === "TimeoutError" ? "Ответ занял слишком много времени. Попробуйте ещё раз." : err instanceof Error ? err.message : "Ошибка распознавания");
     } finally {
       setIsLoading(false);
     }
@@ -310,7 +313,7 @@ export function WorkoutVoiceModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="ИИ-тренер активности" tabIndex={-1} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
       <div className="glass-card flex max-h-[92vh] w-full max-w-lg flex-col rounded-t-3xl sm:rounded-3xl border border-border/80 bg-background/95 p-5 shadow-2xl overflow-y-auto animate-slide-up">
         {/* Шапка */}
         <div className="flex items-center justify-between border-b border-border/40 pb-3 mb-4">

@@ -77,8 +77,6 @@ export default function HubPage() {
         </p>
       </header>
 
-      <AccentColorPicker />
-
       {/* Быстрые инструменты */}
       <section className="mb-5 grid grid-cols-2 gap-3">
         <button
@@ -120,9 +118,20 @@ export default function HubPage() {
         </button>
       </section>
 
+      <nav aria-label="Полезные инструменты" className="mb-5 divide-y divide-border rounded-2xl border border-border bg-card px-4">
+        {[{ href: "/foods", title: "Найти продукт", hint: "Поиск и добавление еды" }, { href: "/calculator", title: "Калькулятор порции", hint: "Калории и БЖУ по граммам" }, { href: "/burn", title: "Записать тренировку", hint: "Фото, текст или каталог" }].map((item) => (
+          <Link key={item.href} href={item.href} className="flex min-h-16 items-center justify-between gap-3 py-3">
+            <span><span className="block text-sm font-semibold">{item.title}</span><span className="text-xs text-muted-foreground">{item.hint}</span></span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </Link>
+        ))}
+      </nav>
+
       {/* Уровень и геймификация */}
       {gam && (
-        <section className="glass-card glossy-sheen scroll-sway mb-5 rounded-3xl p-5 shadow-md">
+        <details className="mb-4 rounded-2xl border border-border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Достижения · уровень {gam.level}</summary>
+          <section className="pt-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Trophy className="h-5 w-5 text-amber-500" />
@@ -196,11 +205,14 @@ export default function HubPage() {
               ))}
             </div>
           </div>
-        </section>
+          </section>
+        </details>
       )}
 
       {/* Режим экспериментов */}
-      <section className="glass-card glossy-sheen scroll-sway-reverse mb-5 rounded-3xl p-5 shadow-md">
+      <details className="mb-4 rounded-2xl border border-border bg-card p-4">
+        <summary className="cursor-pointer text-sm font-semibold">Эксперименты и привычки</summary>
+        <section className="pt-4">
         <div className="flex items-center gap-2 mb-3">
           <FlaskConical className="h-5 w-5 text-violet-500" />
           <h2 className="font-bold text-foreground">Эксперименты</h2>
@@ -221,7 +233,8 @@ export default function HubPage() {
             total={7}
           />
         </div>
-      </section>
+        </section>
+      </details>
 
       {/* Расход и тренировки */}
       <Link href="/burn" className="glass-card glossy-sheen scroll-sway spring-press mb-4 block touch-manipulation rounded-3xl p-5 shadow-md border border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-card/70 to-card/90" aria-label="Перейти в раздел расхода калорий и тренировок">
@@ -252,6 +265,11 @@ export default function HubPage() {
             : "Графики калорий, тренды веса и аналитика."}
         </p>
       </Link>
+
+      <details className="mb-5 rounded-2xl border border-border bg-card p-4">
+        <summary className="cursor-pointer text-sm font-semibold">Внешний вид и цвета</summary>
+        <div className="pt-4"><AccentColorPicker /></div>
+      </details>
 
       {/* Модальные окна */}
       {showVoice && (

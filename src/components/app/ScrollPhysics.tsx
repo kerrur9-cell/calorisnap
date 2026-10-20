@@ -18,7 +18,7 @@ export function ScrollPhysics() {
 
     // Уважение настроек пользователя по отключению анимаций
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReducedMotion) return;
+    if (prefersReducedMotion || window.matchMedia("(pointer: coarse)").matches) return;
 
     let lastScrollY = window.scrollY;
     let lastTime = performance.now();

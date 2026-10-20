@@ -53,6 +53,7 @@ const aiAnalysisItemSchema = z.object({
   carbs_per_100g: numToken(100),
   identification_confidence: confidenceToken,
   notes: z.string().optional().default(""),
+  preparation_state: z.enum(["cooked", "dry", "unknown"]).optional().catch("unknown"),
 });
 
 const aiAnalysisFoodSchema = z.object({
@@ -75,7 +76,7 @@ const aiAnalysisFoodSchema = z.object({
   return { ...value, is_food: true as const, total_weight_grams: totalWeight };
 });
 
-export type AiAnalysisItem = z.infer<typeof aiAnalysisItemSchema>;
+export type AiAnalysisItem = z.infer<typeof aiAnalysisItemSchema> & { reference_food_key?: string };
 
 export interface AiAnalysisFoodResponse {
   is_food: true;

@@ -14,6 +14,7 @@ import { saveMeal } from "@/lib/meals";
 import { resolveMealType, nutritionSchema, weightSchema, foodNameSchema } from "@/lib/validation";
 import { usePersonalFoodGraph } from "@/hooks/usePersonalFoodGraph";
 import { getSmartFoodSuggestions } from "@/lib/nutrition/personalization";
+import { rankFoods } from "@/lib/food-search";
 
 const MEAL_ICONS: Record<MealType, typeof SunMedium> = {
   breakfast: SunMedium,
@@ -37,6 +38,8 @@ interface SearchResult {
   name: string;
   name_local: string | null;
   barcode?: string | null;
+  source?: string;
+  is_verified?: boolean;
   calories_per_100g: number;
   protein_per_100g: number;
   fat_per_100g: number;
@@ -126,10 +129,10 @@ function FoodsFlow() {
   }
 
   const importedBarcodes = new Set((results ?? []).map((food) => food.barcode).filter(Boolean));
-  const visibleResults = [
-    ...(externalResults ?? []).filter((food) => !importedBarcodes.has(food.id.slice(4))),
+  const visibleResults = rankFoods([
     ...(results ?? []),
-  ];
+    ...(externalResults ?? []).filter((food) => !importedBarcodes.has(food.id.slice(4))),
+  ], q);
 
   async function addItem(food: SearchResult) {
     if (addLock.current) return;

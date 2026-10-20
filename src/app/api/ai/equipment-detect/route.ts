@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { generateGeminiJson } from "@/lib/ai/gemini";
+import { detectEquipment } from "@/lib/workout/equipment-vision";
+import { GYM_MACHINES } from "@/lib/workout/machines";
 import { calculateParsedWorkoutCalories } from "@/lib/workout/calculator";
 
 export const maxDuration = 25;
@@ -13,6 +14,8 @@ const equipmentDetectRequestSchema = z.object({
 });
 
 const equipmentDetectResponseSchema = z.object({
+  machineId: z.string().nullable().optional(),
+  uncertain: z.boolean().default(false),
   machineName: z.string().default("Тренажёр"),
   machineNameEn: z.string().optional().nullable(),
   category: z.enum(["cardio", "strength", "machine", "bodyweight"]).catch("machine"),
@@ -54,14 +57,16 @@ export async function POST(req: Request) {
    - recommendedSets (число подходов, например 3 или 4)
    - recommendedReps (число повторений, например 12 или 15)
    - recommendedMinutes (если кардио)
-6. Рассчитать энергозатраты под вес пользователя (${userWeightKg} кг, пол: ${userGender === "female" ? "женский" : "мужской"}):
-   - caloriesPerSet (расход ккал за 1 подход с учетом веса пользователя)
-   - caloriesPerMinute (расход ккал в минуту, если это кардио)
+6. НЕ рассчитывай калории или MET: это делает отдельный калькулятор. caloriesPerSet верни 0, caloriesPerMinute null.
 7. Дать понятный совет по правильной технике выполнения для максимального эффекта (techniqueTip, 1-2 предложения).
 8. Дать совет по безопасности и правильной настройке сиденья/валиков (safetyTip).
 
+Выбирай machineId из каталога ниже. Если нужного варианта нет — null. Если фото не позволяет уверенно определить оборудование, верни uncertain: true; не угадывай по форме одного валика.
+Каталог: ${JSON.stringify(GYM_MACHINES.map(({ id, name, nameEn }) => ({ id, name, nameEn })))}
 Отвечай СТРОГО валидным JSON:
 {
+  "machineId": string | null,
+  "uncertain": boolean,
   "machineName": string,
   "machineNameEn": string,
   "category": "cardio" | "strength" | "machine" | "bodyweight",
@@ -75,26 +80,18 @@ export async function POST(req: Request) {
   "safetyTip": string
 }`;
 
-    const result = await generateGeminiJson({
-      systemPrompt,
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: "Определи этот тренажер по фото и рассчитай параметры тренировки." },
-            {
-              inlineData: {
-                mimeType: mimeType || "image/jpeg",
-                data: cleanBase64,
-              },
-            },
-          ],
-        },
-      ],
-      schema: equipmentDetectResponseSchema,
-      temperature: 0.1,
-      timeoutMs: 20_000,
-    });
+    const result = await detectEquipment({ data: cleanBase64, mimeType }, systemPrompt, equipmentDetectResponseSchema);
+    if (result.uncertain) {
+      return NextResponse.json({ error: "Тренажёр плохо различим. Сфотографируйте его целиком с другого ракурса или выберите из каталога." }, { status: 422 });
+    }
+    const machine = GYM_MACHINES.find((item) => item.id === result.machineId);
+    if (machine) {
+      result.machineName = machine.name;
+      result.machineNameEn = machine.nameEn;
+      result.category = machine.category === "cardio" ? "cardio" : "machine";
+      result.targetMuscles = machine.targetMuscles;
+      result.techniqueTip = machine.techniqueTip;
+    }
 
     // Физиологическая калибровка энергозатрат тренажера под вес пользователя
     const isCardio = result.category === "cardio";

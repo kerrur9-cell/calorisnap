@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { FoodItem } from "@/types/database";
+import { foodMatchRank, normalizeFoodQuery, rankFoods } from "@/lib/food-search";
 
 export const runtime = "nodejs";
 
@@ -16,57 +17,31 @@ async function search(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Войдите в аккаунт" }, { status: 401 });
   if (q.length > 100) return NextResponse.json({ error: "Слишком длинный запрос" }, { status: 400 });
-  const search = q.replace(/[\\%_,().]/g, " ").trim();
+  const search = normalizeFoodQuery(q);
 
-  const { data, error } = search.length >= 2
-    ? await supabase.rpc("search_foods", { p_query: search, p_limit: limit })
+  const [searchResult, basicResult] = await Promise.all([search.length >= 2
+    ? await supabase.rpc("search_foods", { p_query: search, p_limit: 50 })
         .select("id, name, name_local, barcode, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, source, is_verified")
     : await supabase.from("food_items")
         .select("id, name, name_local, barcode, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, source, is_verified")
         .order("is_verified", { ascending: false })
-        .limit(limit);
+        .limit(limit),
+    search.length >= 2 ? supabase.from("food_items")
+      .select("id,name,name_local,barcode,calories_per_100g,protein_per_100g,fat_per_100g,carbs_per_100g,source,is_verified")
+      .eq("is_verified", true).limit(500) : Promise.resolve({ data: [] }),
+  ]);
+  const { data, error } = searchResult;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const queryLower = search.toLowerCase();
   const rawItems = (data ?? []) as Partial<FoodItem>[];
-
-  // Ранжирование: точные совпадения и совпадения с начала слова всегда выше
-  const sortedItems = rawItems.sort((a, b) => {
-    const rankA = getMatchRank(a, queryLower);
-    const rankB = getMatchRank(b, queryLower);
-    if (rankA !== rankB) return rankA - rankB;
-    if (Boolean(b.is_verified) !== Boolean(a.is_verified)) {
-      return (b.is_verified ? 1 : 0) - (a.is_verified ? 1 : 0);
-    }
-    return (a.name_local || a.name || "").localeCompare(b.name_local || b.name || "");
-  });
-
+  // Fetch basic verified foods separately: RPC may fill its limit with branded products.
+  const basics = ((basicResult.data ?? []) as Partial<FoodItem>[]).filter(item => foodMatchRank(item, search) < 99);
+  const unique = [...new Map([...basics, ...rawItems].map(item => [item.id, item])).values()];
+  const sortedItems = rankFoods(unique, search).slice(0, limit);
   return NextResponse.json({ items: sortedItems }, { headers: { "Cache-Control": "private, no-store" } });
-}
-
-function getMatchRank(item: Partial<FoodItem>, queryLower: string): number {
-  const name = (item.name ?? "").toLowerCase();
-  const nameLocal = (item.name_local ?? "").toLowerCase();
-
-  // 0. Точное совпадение строки
-  if (nameLocal === queryLower || name === queryLower) return 0;
-
-  // 1. Начинается с запроса
-  if (nameLocal.startsWith(queryLower) || name.startsWith(queryLower)) return 1;
-
-  // 2. Одно из слов начинается с запроса
-  const wordsLocal = nameLocal.split(/[\s,·\-/]+/);
-  const words = name.split(/[\s,·\-/]+/);
-  if (wordsLocal.some((w) => w.startsWith(queryLower)) || words.some((w) => w.startsWith(queryLower))) return 2;
-
-  // 3. Содержит подстроку
-  if (nameLocal.includes(queryLower) || name.includes(queryLower)) return 3;
-
-  // 4. Нечёткое совпадение (опечатка)
-  return 4;
 }
 
 export async function GET(request: NextRequest) {

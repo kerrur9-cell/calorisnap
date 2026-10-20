@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeFoodPhoto } from "@/lib/ai/gemini";
 import { analyzeFoodPhotoWithGroq } from "@/lib/ai/groq";
+import { analyzeFoodPhotoWithOpenRouter } from "@/lib/ai/openrouter";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
@@ -76,16 +76,17 @@ async function analyzeRequest(request: NextRequest) {
 
   try {
     const attemptHeader = request.headers.get("x-analysis-attempt");
-    const attempt = attemptHeader === "secondary" || attemptHeader === "tertiary" ? attemptHeader : "primary";
+    // Legacy clients may still send "tertiary" for Groq. Gemini is paused for photos.
+    const useGroq = attemptHeader === "groq" || attemptHeader === "tertiary";
     const input = {
       dataBase64,
       mimeType,
       totalWeightGrams,
       forceFood: body.force_food,
     };
-    const result = attempt === "tertiary"
+    const result = useGroq
       ? await analyzeFoodPhotoWithGroq(input)
-      : await analyzeFoodPhoto(input, attempt);
+      : await analyzeFoodPhotoWithOpenRouter(input);
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     // The provider code intentionally exposes only human-safe messages; showing
@@ -94,10 +95,8 @@ async function analyzeRequest(request: NextRequest) {
       ? error.message
       : "Не удалось распознать фото. Попробуйте ещё раз или добавьте еду вручную.";
     const attempt = request.headers.get("x-analysis-attempt");
-    const nextAttempt = attempt === "tertiary" ? null
-      : attempt === "secondary" ? (process.env.GROQ_API_KEY ? "tertiary" : null)
-      : process.env.GEMINI_FALLBACK_API_KEY ? "secondary"
-      : process.env.GROQ_API_KEY ? "tertiary" : null;
+    const nextAttempt = attempt === "groq" || attempt === "tertiary"
+      ? null : process.env.GROQ_API_KEY ? "groq" : null;
     return NextResponse.json({ error: message, retryable: Boolean(nextAttempt), nextAttempt }, { status: 503 });
   }
 }

@@ -122,6 +122,21 @@ export type WaterEntry = {
   created_at: string;
 };
 
+export type PushSubscriptionEntry = {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  reminder_time: string;
+  timezone: string;
+  enabled: boolean;
+  last_sent_date: string | null;
+  last_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AiFeedback = {
   id: string;
   user_id: string;
@@ -185,6 +200,7 @@ export interface Database {
       meal_items: Table<MealItem, "meal_entry_id" | "user_id" | "weight_grams" | "calories" | "protein_g" | "fat_g" | "carbs_g">;
       food_items: Table<FoodItem, "name" | "calories_per_100g" | "protein_per_100g" | "fat_per_100g" | "carbs_per_100g">;
       water_entries: Table<WaterEntry, "user_id" | "amount_ml">;
+      push_subscriptions: Table<PushSubscriptionEntry, "user_id" | "endpoint" | "p256dh" | "auth">;
       ai_feedback: Table<AiFeedback, "user_id" | "ai_prediction" | "was_accepted">;
       workout_entries: Table<WorkoutDbEntry, "user_id" | "exercise_name">;
       friend_access_codes: Table<{ id: string; user_id: string; code: string; is_active: boolean; created_at: string; updated_at: string }, "user_id" | "code">;

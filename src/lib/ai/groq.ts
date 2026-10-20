@@ -1,20 +1,16 @@
 import { GROQ_FOOD_ANALYSIS_PROMPT } from "./prompts";
-import { rebalanceWeights, type AnalyzePhotoInput } from "./gemini";
+import { rebalanceWeights } from "./gemini";
+import { foodAnalysisContent, type FoodAnalysisInput } from "./food-input";
+import { normalizeFoodPreparation } from "../nutrition/food-preparation";
 import { safeParseAnalysis, type AiAnalysisResponse } from "./schema";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const VISION_MODEL = process.env.GROQ_VISION_MODEL ?? "qwen/qwen3.8-27b";
 
-export async function analyzeFoodPhotoWithGroq(input: AnalyzePhotoInput): Promise<AiAnalysisResponse> {
+export async function analyzeFoodPhotoWithGroq(input: FoodAnalysisInput): Promise<AiAnalysisResponse> {
   const key = process.env.GROQ_API_KEY;
   if (!key) throw new Error("Резервный анализ фото не настроен");
 
-  const forceFoodInstruction = input.forceFood
-    ? "\n\nПользователь подтвердил, что на фото точно еда. Обязательно распознай продукты и верни is_food: true."
-    : "";
-  const weightInstruction = input.totalWeightGrams
-    ? `\n\nПользователь указал общий вес порции: ${input.totalWeightGrams} г. Распредели его по видимым продуктам.`
-    : "";
   let response: Response;
   try {
     response = await fetch(GROQ_URL, {
@@ -22,10 +18,7 @@ export async function analyzeFoodPhotoWithGroq(input: AnalyzePhotoInput): Promis
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: VISION_MODEL,
-        messages: [{ role: "user", content: [
-          { type: "text", text: GROQ_FOOD_ANALYSIS_PROMPT + forceFoodInstruction + weightInstruction },
-          { type: "image_url", image_url: { url: `data:${input.mimeType};base64,${input.dataBase64}` } },
-        ] }],
+        messages: [{ role: "user", content: foodAnalysisContent(input, GROQ_FOOD_ANALYSIS_PROMPT) }],
         response_format: { type: "json_object" },
         temperature: 0.1,
         max_completion_tokens: 4096,
@@ -37,13 +30,16 @@ export async function analyzeFoodPhotoWithGroq(input: AnalyzePhotoInput): Promis
   }
 
   if (!response.ok) {
-    throw new Error(response.status === 429 || response.status >= 500
-      ? "Все анализаторы сейчас перегружены. Попробуйте чуть позже."
+    throw new Error(response.status === 429
+      ? "Groq: превышена квота запросов. Попробуйте позже."
+      : response.status >= 500 ? "Groq временно недоступен. Попробуйте позже."
       : `Резервный анализатор отклонил фото (${response.status})`);
   }
   const json = await response.json();
   const content = json?.choices?.[0]?.message?.content;
   const parsed = safeParseAnalysis(content);
   if (!parsed.ok) throw new Error(`Резервный анализатор не распознал фото: ${parsed.error}`);
-  return rebalanceWeights(parsed.data, input.totalWeightGrams);
+  const result = rebalanceWeights(normalizeFoodPreparation(parsed.data, "description" in input ? input.description : undefined), input.totalWeightGrams);
+  if ("description" in input && result.is_food) result.warnings = [...result.warnings, "Вес без указанной граммовки и КБЖУ оценены приблизительно. Проверьте порции перед сохранением."];
+  return result;
 }

@@ -18,9 +18,11 @@ import {
   Utensils,
 } from "lucide-react";
 import { CameraCapture } from "@/components/camera/CameraCapture";
+import { FoodDescriptionInput } from "@/components/camera/FoodDescriptionInput";
 import { ConfidenceBadge } from "@/components/ai/ConfidenceBadge";
 import { createClient } from "@/lib/supabase/client";
 import { macrosForWeight } from "@/lib/nutrition/macros";
+import { PREPARATION_FOODS, type PreparationFoodKey, type PreparationState } from "@/lib/nutrition/food-preparation";
 import type { AiAnalysisItem, AiAnalysisResponse, AiAnalysisNonFoodResponse } from "@/lib/ai/schema";
 import { getNonFoodMeta } from "@/lib/ai/nonFoodPhrases";
 import { todayKey } from "@/lib/utils";
@@ -63,13 +65,15 @@ function CameraFlow() {
   }, [isGuestView, router]);
   const [stage, setStage] = useState<Stage>("capture");
   const [photo, setPhoto] = useState<PhotoInput | null>(null);
+  const [description, setDescription] = useState("");
+  const [textAnalysis, setTextAnalysis] = useState(false);
   const [totalWeight, setTotalWeight] = useState("");
   const [result, setResult] = useState<AiAnalysisResponse | null>(null);
   const [items, setItems] = useState<EditableItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [analysisAttempt, setAnalysisAttempt] = useState<"secondary" | "tertiary" | null>(null);
+  const [analysisAttempt, setAnalysisAttempt] = useState<"groq" | null>(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
 
   useEffect(() => {
@@ -78,12 +82,13 @@ function CameraFlow() {
     return () => window.clearTimeout(timer);
   }, [stage, retryCountdown]);
 
-  async function handleCapture(next: PhotoInput, options?: { forceFood?: boolean }) {
-    if (!next.dataBase64) {
+  async function handleCapture(next: PhotoInput | null, options?: { forceFood?: boolean; description?: string }) {
+    if (!next?.dataBase64 && !options?.description) {
       setPhoto(null);
       return;
     }
     setPhoto(next);
+    setTextAnalysis(Boolean(options?.description));
     pendingMeal.current = null;
     setStage("analyzing");
     setRetrying(false);
@@ -93,23 +98,25 @@ function CameraFlow() {
     const weight = Number(totalWeight.replace(",", "."));
 
     try {
+      const endpoint = options?.description ? "/api/ai/analyze-text" : "/api/ai/analyze";
       const requestBody = JSON.stringify({
-        data: next.dataBase64,
-        mime_type: next.mimeType,
+        data: next?.dataBase64,
+        mime_type: next?.mimeType,
+        description: options?.description,
         total_weight_grams: weight > 0 ? weight : undefined,
         force_food: options?.forceFood,
       });
-      let res = await fetch("/api/ai/analyze", {
+      let res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: requestBody,
       });
       let json = await res.json();
 
-      for (let fallback = 0; !res.ok && json.retryable && json.nextAttempt && fallback < 2; fallback++) {
+      for (let fallback = 0; !res.ok && json.retryable && json.nextAttempt === "groq" && fallback < 1; fallback++) {
         setRetrying(true);
         setAnalysisAttempt(json.nextAttempt);
-        res = await fetch("/api/ai/analyze", {
+        res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-analysis-attempt": json.nextAttempt },
           body: requestBody,
@@ -144,6 +151,9 @@ function CameraFlow() {
   }
 
   function updateItem(id: string, patch: Partial<EditableItem>) {
+    if (("name" in patch || "name_local" in patch || "per100" in patch) && !("referenceFoodKey" in patch)) {
+      patch = { ...patch, referenceFoodKey: undefined, preparationState: undefined };
+    }
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
@@ -273,15 +283,17 @@ function CameraFlow() {
         <div className="w-10" />
       </header>
 
-      {stage === "capture" && (
+      {stage === "capture" && (<>
         <CaptureStage
           totalWeight={totalWeight}
           setTotalWeight={setTotalWeight}
           onCapture={handleCapture}
         />
-      )}
+        <div className="mt-4"><FoodDescriptionInput value={description} onChange={setDescription}
+          onAnalyze={(text) => handleCapture(null, { description: text })} /></div>
+      </>)}
 
-      {stage === "analyzing" && <AnalyzingStage retrying={retrying} attempt={analysisAttempt} />}
+      {stage === "analyzing" && <AnalyzingStage retrying={retrying} attempt={analysisAttempt} textAnalysis={textAnalysis} />}
 
       {stage === "error" && (
         <div className="flex flex-col items-center gap-4 rounded-3xl bg-card p-8 text-center">
@@ -289,17 +301,17 @@ function CameraFlow() {
           <p className="text-sm">{error}</p>
           <div className="flex flex-wrap justify-center gap-3">
             <button
-              onClick={() => photo && handleCapture(photo)}
-              disabled={!photo || retryCountdown > 0}
+              onClick={() => textAnalysis ? handleCapture(null, { description }) : photo && handleCapture(photo)}
+              disabled={(!photo && !textAnalysis) || retryCountdown > 0}
               className="rounded-full bg-primary px-5 py-2.5 text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {retryCountdown > 0 ? `Повторить это фото через ${retryCountdown} с` : "Отправить это фото ещё раз"}
+              {retryCountdown > 0 ? `Повторить через ${retryCountdown} с` : textAnalysis ? "Отправить описание ещё раз" : "Отправить это фото ещё раз"}
             </button>
             <button
               onClick={() => setStage("capture")}
               className="rounded-full bg-muted px-5 py-2.5 text-sm"
             >
-              Выбрать другое фото
+              {textAnalysis ? "Изменить описание" : "Выбрать другое фото"}
             </button>
             <Link
               href={{ pathname: "/foods", query: { meal: mealType } }}
@@ -380,6 +392,8 @@ function NotFoodStage({
       {/* Превью фото */}
       {photo?.dataBase64 && (
         <div className="relative overflow-hidden rounded-2xl border-2 border-border shadow-sm max-w-[200px] max-h-[160px]">
+          {/* Local data-URL preview: no remote image to optimize. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`data:${photo.mimeType};base64,${photo.dataBase64}`}
             alt="Снимок"
@@ -427,12 +441,12 @@ function NotFoodStage({
           Добавить блюдо вручную
         </Link>
 
-        <button
+        {photo && <button
           onClick={onForceAnalyze}
           className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 py-1.5 transition-colors"
         >
           Это точно еда? Всё равно распознать как блюдо
-        </button>
+        </button>}
       </div>
     </div>
   );
@@ -501,7 +515,7 @@ const ANALYSIS_MESSAGES = [
   "Сверяем калории и БЖУ…",
 ];
 
-function AnalyzingStage({ retrying, attempt }: { retrying: boolean; attempt: "secondary" | "tertiary" | null }) {
+function AnalyzingStage({ retrying, attempt, textAnalysis }: { retrying: boolean; attempt: "groq" | null; textAnalysis: boolean }) {
   const [messageIndex, setMessageIndex] = useState(0);
   useEffect(() => {
     if (retrying) return;
@@ -515,9 +529,9 @@ function AnalyzingStage({ retrying, attempt }: { retrying: boolean; attempt: "se
         <UtensilsCrossed className="h-9 w-9 text-primary animate-pulse stroke-[1.8]" />
       </div>
       <div>
-        <p className="text-lg font-semibold">{attempt === "tertiary" ? "Пробуем последний раз…" : retrying ? "Проверяем фото ещё раз…" : "Распознаём еду…"}</p>
+        <p className="text-lg font-semibold">{textAnalysis ? "Разбираем описание еды…" : retrying ? "Проверяем фото ещё раз…" : "Распознаём еду…"}</p>
         <p className="mt-2 min-h-10 text-sm text-muted-foreground">
-          {attempt === "tertiary" ? "Gemini не справился. Подключаем Groq…" : retrying ? "Первый анализ не удался. Подключаем запасной Gemini…" : ANALYSIS_MESSAGES[messageIndex]}
+          {attempt === "groq" ? "Подключаем запасной анализатор Groq…" : textAnalysis ? "Оцениваем порции и КБЖУ. Результат можно будет поправить." : ANALYSIS_MESSAGES[messageIndex]}
         </p>
       </div>
     </div>
@@ -534,6 +548,8 @@ export interface EditableItem {
   weightSource: "scale_ocr" | "user_input" | "ai_estimated" | "manual";
   per100: { calories: number; protein: number; fat: number; carbs: number };
   confidence: number;
+  referenceFoodKey?: PreparationFoodKey;
+  preparationState?: PreparationState;
 }
 
 function toEditable(
@@ -560,6 +576,8 @@ function toEditable(
       carbs: it.carbs_per_100g,
     },
     confidence: Math.min(it.identification_confidence, totalWeight > 0 ? 1 : it.weight_confidence),
+    referenceFoodKey: it.reference_food_key && it.reference_food_key in PREPARATION_FOODS ? it.reference_food_key as PreparationFoodKey : undefined,
+    preparationState: it.preparation_state === "dry" ? "dry" : "cooked",
   };
 }
 
@@ -693,6 +711,28 @@ function ResultStage({
                       </button>
                     </div>
                   </div>
+                </div>
+              )}
+              {item.referenceFoodKey && (
+                <div className="mt-3 border-t border-border pt-3">
+                  <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    Вес продукта
+                    <select value={item.preparationState || "cooked"}
+                      aria-label={`Состояние: ${item.name_local || item.name}`}
+                      className="min-h-11 rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+                      onChange={(event) => {
+                        const state = event.target.value as PreparationState;
+                        const reference = PREPARATION_FOODS[item.referenceFoodKey!][state];
+                        updateItem(item.id, { name: `${item.referenceFoodKey} ${state}`, name_local: reference.name,
+                          per100: { ...reference.per100 }, preparationState: state, referenceFoodKey: item.referenceFoodKey });
+                      }}>
+                      <option value="cooked">После варки (готовый)</option>
+                      <option value="dry">До варки (сухой)</option>
+                    </select>
+                  </label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Справочник: {item.per100.calories} ккал на 100 г. При смене состояния граммы не переводятся — укажи вес {item.preparationState === "dry" ? "сухого" : "готового"} продукта.
+                  </p>
                 </div>
               )}
             </li>

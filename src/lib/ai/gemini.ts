@@ -7,8 +7,22 @@ import { safeParseAnalysis, type AiAnalysisResponse } from "./schema";
  * ключ живёт в GEMINI_API_KEY и в браузер не попадает.
  */
 
-const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL ?? process.env.GEMINI_PRIMARY_MODEL ?? "gemini-3-flash-preview";
-const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? "gemini-3.6-flash";
+function geminiModels(): string[] {
+  return [...new Set([
+    process.env.GEMINI_MODEL?.trim() || process.env.GEMINI_PRIMARY_MODEL?.trim() || "gemini-3.6-flash",
+    process.env.GEMINI_FALLBACK_MODEL?.trim() || "gemini-flash-latest",
+    "gemini-flash-latest",
+  ])];
+}
+
+function providerError(status: number): string {
+  if (status === 401 || status === 403) return "Gemini: ключ недействителен, заблокирован или не имеет доступа.";
+  if (status === 402) return "Gemini: проверьте баланс и оплату API.";
+  if (status === 429) return "Gemini: превышена квота запросов. Повторите позже.";
+  if (status === 404) return "Gemini: выбранная модель недоступна.";
+  if (status >= 500) return "Gemini временно перегружен. Попробуйте ещё раз.";
+  return "Gemini не смог обработать запрос. Попробуйте ещё раз.";
+}
 
 export interface AnalyzePhotoInput {
   /** base64 данные фото (без data: префикса) */
@@ -55,9 +69,10 @@ async function callGemini(
       );
 
       if (!res.ok) {
-        const message = `Gemini ошибка ${res.status}`;
-        const text = await res.text().catch(() => "");
-        return { ok: false, status: res.status, message: `${message}: ${text.slice(0, 200)}` };
+        // Do not expose provider payloads (which may include credentials) to users/logs.
+        await res.body?.cancel().catch(() => {});
+        console.warn("Gemini request failed", { model, status: res.status });
+        return { ok: false, status: res.status, message: providerError(res.status) };
       }
 
       const json = await res.json();
@@ -78,8 +93,10 @@ async function callGemini(
       }
       return { ok: true, text: rawText };
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      return { ok: false, status: 0, message: `Gemini не ответил: ${errMsg}` };
+      const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+      return { ok: false, status: 0, message: timedOut
+        ? "Gemini не успел ответить. Попробуйте ещё раз."
+        : "Не удалось связаться с Gemini. Попробуйте ещё раз." };
     }
 }
 
@@ -127,7 +144,9 @@ export async function analyzeFoodPhoto(
   input: AnalyzePhotoInput,
   attempt: "primary" | "secondary" = "primary",
 ): Promise<AiAnalysisResponse> {
-  const apiKey = attempt === "secondary" ? process.env.GEMINI_FALLBACK_API_KEY : process.env.GEMINI_API_KEY;
+  const apiKey = (attempt === "secondary"
+    ? process.env.GEMINI_FALLBACK_API_KEY || process.env.GEMINI_API_KEY
+    : process.env.GEMINI_API_KEY || process.env.GEMINI_FALLBACK_API_KEY)?.trim();
   if (!apiKey) {
     throw new Error("AI не настроен: отсутствует ключ Gemini");
   }
@@ -169,38 +188,18 @@ export async function analyzeFoodPhoto(
     },
   };
 
-  let response = await callGemini(body, apiKey, attempt === "secondary" ? GEMINI_FALLBACK_MODEL : GEMINI_PRIMARY_MODEL);
-  if (!response.ok && attempt === "primary") {
-    const candidateModels = [
-      GEMINI_FALLBACK_MODEL !== GEMINI_PRIMARY_MODEL ? GEMINI_FALLBACK_MODEL : "gemini-3.6-flash",
-      "gemini-3.7-flash",
-      "gemini-flash-latest",
-    ];
-    const candidateKeys = [process.env.GEMINI_FALLBACK_API_KEY, apiKey].filter((k): k is string => Boolean(k));
-
-    for (const altModel of candidateModels) {
-      for (const altKey of candidateKeys) {
-        if (altModel === GEMINI_PRIMARY_MODEL && altKey === apiKey) continue;
-        const altResponse = await callGemini(body, altKey, altModel);
-        if (altResponse.ok) {
-          response = altResponse;
-          break;
-        }
-      }
-      if (response.ok) break;
-    }
+  // One bounded UI stage; the client starts secondary/Groq separately.
+  const models = geminiModels();
+  const model = attempt === "secondary" ? models[1] || models[0] : models[0];
+  const deadline = Date.now() + 18_000;
+  let response = await callGemini(body, apiKey, model, 18_000);
+  const primaryKey = process.env.GEMINI_API_KEY?.trim();
+  if (!response.ok && attempt === "secondary" && [401, 402, 403].includes(response.status)
+    && primaryKey && primaryKey !== apiKey && Date.now() < deadline) {
+    response = await callGemini(body, primaryKey, model, deadline - Date.now());
   }
 
   if (!response.ok) {
-    if (response.status === 402) {
-      throw new Error("Закончился баланс кредитов Gemini в AI Studio. Пополните баланс или обновите ключ.");
-    }
-    if (response.status === 429) {
-      throw new Error("Исчерпан дневной лимит бесплатных запросов к Gemini (429). Попробуйте чуть позже или добавьте резервный ключ.");
-    }
-    if (response.status >= 500) {
-      throw new Error("Сервера Gemini сейчас перегружены (503). Попробуйте повторить через минуту.");
-    }
     throw new Error(response.message);
   }
 
@@ -240,21 +239,14 @@ export interface GeminiJsonOptions<T = unknown> {
   responseJsonSchema?: object;
 }
 
-const JSON_CANDIDATE_MODELS = [
-  "gemini-3-flash-preview",
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
-];
-
 /**
  * Универсальная генерация структурированного JSON через Gemini.
- * Автоматически перебирает быстрые надёжные модели (flash-preview -> 3.6-flash)
- * и ключи (основной -> запасной), снимает markdown и валидирует Zod схему.
+ * Uses configured models/keys within one bounded budget, then lets callers use Groq.
  */
 export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions<T>): Promise<T> {
   const primaryKey = process.env.GEMINI_API_KEY;
   const fallbackKey = process.env.GEMINI_FALLBACK_API_KEY;
-  const keys = [primaryKey, fallbackKey].filter((k): k is string => Boolean(k && k.trim()));
+  const keys = [...new Set([primaryKey?.trim(), fallbackKey?.trim()].filter((k): k is string => Boolean(k)))];
 
   if (keys.length === 0) {
     throw new Error("AI не настроен: отсутствует GEMINI_API_KEY");
@@ -304,16 +296,25 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
   }
 
   let lastError: Error | null = null;
-  const deadline = options.timeoutMs === undefined ? Infinity : Date.now() + options.timeoutMs;
+  const deadline = Date.now() + Math.min(22_000, Math.max(1, options.timeoutMs ?? 18_000));
+  const blockedKeys = new Set<string>();
+  const models = geminiModels();
 
-  for (const model of JSON_CANDIDATE_MODELS) {
-    for (const key of keys) {
+  attempts: for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+    const model = models[modelIndex];
+    // After a slow primary, give the reserve key/model a chance first.
+    const orderedKeys = modelIndex === 0 ? keys : [...keys].reverse();
+    for (const key of orderedKeys) {
+      if (blockedKeys.has(key)) continue;
       try {
         const remaining = deadline - Date.now();
         if (remaining <= 0) throw lastError ?? new Error("AI request timed out");
-        const res = await callGemini(body, key, model, Math.min(10_000, remaining));
+        const res = await callGemini(body, key, model, Math.min(8_000, remaining));
         if (!res.ok) {
           lastError = new Error(res.message);
+          if ([401, 402, 403].includes(res.status)) blockedKeys.add(key);
+          if (res.status === 400) break attempts;
+          if (res.status === 404 || res.status === 0 || res.status >= 500) break;
           continue;
         }
 

@@ -5,6 +5,8 @@ import { Search, X, Plus, Check, Sparkles, Loader2, Dumbbell, Lightbulb } from "
 import { GYM_MACHINES, type GymMachineItem } from "@/lib/workout/machines";
 import { calculateDetailedWorkout } from "@/lib/workout/calculator";
 import type { WorkoutEntry } from "@/lib/workout/types";
+import { searchMachines } from "@/lib/workout/machine-search";
+import { useDialog } from "@/hooks/useDialog";
 
 interface MachineCatalogModalProps {
   isOpen: boolean;
@@ -25,6 +27,7 @@ export function MachineCatalogModal({
   userAge,
   onAddWorkout,
 }: MachineCatalogModalProps) {
+  const dialogRef = useDialog(isOpen, onClose);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedMachine, setSelectedMachine] = useState<GymMachineItem | null>(null);
@@ -35,21 +38,11 @@ export function MachineCatalogModal({
   const [minutes, setMinutes] = useState(25);
   const [weightKg, setWeightKg] = useState<number>(30);
   const [aiAdvice, setAiAdvice] = useState<string | null>(null);
-  const [aiCalories, setAiCalories] = useState<number | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isAdded, setIsAdded] = useState(false);
 
   const filteredMachines = useMemo(() => {
-    return GYM_MACHINES.filter((item) => {
-      const matchesCategory =
-        selectedCategory === "all" || item.category === selectedCategory;
-      const matchesSearch =
-        searchQuery.trim() === "" ||
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (item.nameEn && item.nameEn.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        item.targetMuscles.some((m) => m.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesCategory && matchesSearch;
-    });
+    return searchMachines(searchQuery, selectedCategory);
   }, [searchQuery, selectedCategory]);
 
   const handleSelectMachine = (machine: GymMachineItem) => {
@@ -59,7 +52,6 @@ export function MachineCatalogModal({
     setMinutes(machine.defaultMinutes ?? 25);
     setWeightKg(machine.defaultWeightKg ?? 30);
     setAiAdvice(null);
-    setAiCalories(null);
     setIsAdded(false);
   };
 
@@ -70,7 +62,7 @@ export function MachineCatalogModal({
       category: selectedMachine.category === "cardio" ? "cardio" : "machine",
       sets: selectedMachine.category === "cardio" ? undefined : sets,
       reps: selectedMachine.category === "cardio" ? undefined : reps,
-      weightKg: selectedMachine.category === "cardio" ? undefined : weightKg,
+      weightKg: selectedMachine.category === "cardio" || selectedMachine.id.startsWith("assisted_") ? undefined : weightKg,
       durationMinutes: selectedMachine.category === "cardio" ? minutes : undefined,
       userWeightKg,
       userHeightCm,
@@ -103,7 +95,6 @@ export function MachineCatalogModal({
       const data = await res.json();
       if (data) {
         if (data.advice) setAiAdvice(data.advice);
-        if (typeof data.caloriesBurned === "number") setAiCalories(data.caloriesBurned);
       }
     } catch {
       // ignore
@@ -114,14 +105,14 @@ export function MachineCatalogModal({
 
   const handleSave = () => {
     if (!selectedMachine) return;
-    const finalCalories = aiCalories ?? (detailedCalc?.activeCalories ?? 0);
+    const finalCalories = detailedCalc?.activeCalories ?? 0;
     onAddWorkout({
       exerciseName: selectedMachine.name,
       category: selectedMachine.category === "cardio" ? "cardio" : "machine",
       durationMinutes: selectedMachine.category === "cardio" ? minutes : undefined,
       sets: selectedMachine.category !== "cardio" ? sets : undefined,
       reps: selectedMachine.category !== "cardio" ? reps : undefined,
-      weightKg: selectedMachine.category !== "cardio" ? weightKg : undefined,
+      weightKg: selectedMachine.category !== "cardio" && !selectedMachine.id.startsWith("assisted_") ? weightKg : undefined,
       caloriesBurned: finalCalories,
       grossCalories: detailedCalc?.grossCalories,
       activeCalories: finalCalories,
@@ -142,7 +133,7 @@ export function MachineCatalogModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Каталог тренажёров" tabIndex={-1} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
       <div className="glass-card flex max-h-[90vh] w-full max-w-lg flex-col rounded-t-3xl sm:rounded-3xl border border-border/80 bg-background/95 p-5 shadow-2xl overflow-hidden animate-slide-up">
         {/* Заголовок */}
         <div className="flex items-center justify-between border-b border-border/40 pb-3">
@@ -155,7 +146,7 @@ export function MachineCatalogModal({
                 Каталог тренажеров
               </h2>
               <p className="text-xs text-muted-foreground">
-                Выберите тренажер для точного расчёта калорий
+                Выберите тренажёр и укажите свою нагрузку
               </p>
             </div>
           </div>
@@ -292,7 +283,7 @@ export function MachineCatalogModal({
                 <div className="rounded-2xl border border-border/70 p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-muted-foreground">
-                      Рабочий вес отягощения
+                      {selectedMachine.id === "assisted_pullup" || selectedMachine.id === "assisted_dips" ? "Противовес (не учитывается в калориях)" : "Рабочий вес отягощения"}
                     </label>
                     <span className="text-sm font-bold text-primary tabular-nums">
                       {weightKg} кг
@@ -354,7 +345,7 @@ export function MachineCatalogModal({
                     </>
                   ) : (
                     <>
-                      <Sparkles className="h-3.5 w-3.5" /> Рассчитать и разобрать технику через ИИ
+                      <Sparkles className="h-3.5 w-3.5" /> Получить совет по технике
                     </>
                   )}
                 </button>
@@ -375,14 +366,9 @@ export function MachineCatalogModal({
               <div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                   <span>Активный расход ({userWeightKg} кг)</span>
-                  {aiCalories !== null && (
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                      <Sparkles className="h-2.5 w-2.5" /> ИИ подтвердил
-                    </span>
-                  )}
                 </div>
                 <div className="text-2xl font-extrabold text-primary tabular-nums">
-                  ~{aiCalories ?? (detailedCalc?.activeCalories ?? 0)}{" "}
+                  ~{detailedCalc?.activeCalories ?? 0}{" "}
                   <span className="text-sm font-normal text-foreground">ккал</span>
                 </div>
                 {detailedCalc && (
@@ -420,11 +406,17 @@ export function MachineCatalogModal({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
+                aria-label="Поиск тренажёра"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по названию или мышцам..."
                 className="w-full rounded-2xl border border-border/80 bg-muted/40 pl-9 pr-4 py-2.5 text-sm focus:border-primary focus:outline-hidden"
               />
+            </div>
+
+            <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground" aria-live="polite">
+              <span>{filteredMachines.length} из {GYM_MACHINES.length} тренажёров</span>
+              {(searchQuery || selectedCategory !== "all") && <button type="button" className="min-h-10 text-primary" onClick={() => { setSearchQuery(""); setSelectedCategory("all"); }}>Сбросить поиск</button>}
             </div>
 
             {/* Категории */}

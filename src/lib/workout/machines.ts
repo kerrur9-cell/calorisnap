@@ -16,7 +16,39 @@ export interface GymMachineItem {
   techniqueTip: string;
 }
 
+function basicMachine(
+  id: string, name: string, nameEn: string,
+  category: GymMachineItem["category"], targetMuscles: string[],
+  description: string, techniqueTip: string,
+): GymMachineItem {
+  return {
+    id, name, nameEn, category, targetMuscles, description, techniqueTip,
+    categoryLabel: category === "glutes_legs" ? "Ягодицы и бёдра" : category === "abs_core" ? "Пресс и талия" : "Верх тела",
+    emoji: "🏋️", defaultMet: 3.5, intensityFactor: 1,
+    defaultSets: 3, defaultReps: 12,
+    // Working load is intentionally unset: users must enter their own load.
+  };
+}
+
 export const GYM_MACHINES: GymMachineItem[] = [
+  basicMachine("chest_press", "Жим от груди в тренажёре", "Seated Chest Press", "back_upper", ["Грудные", "Трицепс", "Передняя дельта"], "Жим рукоятей вперёд сидя; не сведение рук в бабочке.", "Настройте сиденье под положение рукоятей и двигайтесь без рывков."),
+  basicMachine("incline_chest_press", "Наклонный жим от груди в тренажёре", "Incline Chest Press", "back_upper", ["Грудные", "Трицепс"], "Жим рукоятей вперёд и вверх под углом, в том числе в Хаммере.", "Сохраняйте спину на опоре и контролируйте амплитуду."),
+  basicMachine("shoulder_press", "Жим на плечи в тренажёре", "Machine Shoulder Press", "back_upper", ["Дельтовидные", "Трицепс"], "Вертикальный жим рукоятей вверх сидя, не жим от груди.", "Не прогибайтесь в пояснице и избегайте болезненной амплитуды."),
+  basicMachine("lateral_raise_machine", "Разведение рук на плечи в тренажёре", "Lateral Raise Machine", "back_upper", ["Средняя дельта"], "Подъём локтей в стороны с упорами на плечи.", "Поднимайте руки плавно, не поднимайте плечи к ушам."),
+  basicMachine("reverse_pec_deck", "Обратная бабочка", "Reverse Pec Deck / Rear Delt Fly", "back_upper", ["Задняя дельта", "Ромбовидные"], "Разведение рук назад сидя лицом к спинке; не сведение на грудь.", "Сохраняйте грудь на опоре и не откидывайтесь назад."),
+  basicMachine("chest_supported_row", "Тяга в тренажёре с упором грудью", "Chest Supported Row / Hammer Row", "back_upper", ["Широчайшие", "Ромбовидные", "Бицепс"], "Горизонтальная тяга рычагов к корпусу с опорой для груди, не нижний тросовый блок.", "Не отрывайте грудь от опоры во время тяги."),
+  basicMachine("assisted_pullup", "Подтягивания в гравитроне", "Assisted Pull-up Machine", "back_upper", ["Широчайшие", "Бицепс"], "Подтягивания с противовесом и опорой под колени; вес стека означает помощь, не рабочий вес.", "Контролируйте опускание; противовес не записывайте как вес снаряда."),
+  basicMachine("assisted_dips", "Отжимания на брусьях в гравитроне", "Assisted Dips", "back_upper", ["Трицепс", "Грудные"], "Отжимания на брусьях с противовесом, не подтягивания; вес стека означает помощь.", "Не опускайтесь в болезненную глубину; противовес не записывайте как рабочий вес."),
+  basicMachine("biceps_curl_machine", "Сгибание рук на бицепс в тренажёре", "Biceps Curl / Preacher Curl Machine", "back_upper", ["Бицепс", "Плечевая"], "Сгибание локтей с опорой для рук, в том числе скамья Скотта с рычагом.", "Не отрывайте локти от опоры и не бросайте вес."),
+  basicMachine("cable_biceps_curl", "Сгибание рук на бицепс на блоке", "Cable Biceps Curl", "back_upper", ["Бицепс", "Плечевая"], "Сгибание рук с рукоятью нижнего тросового блока.", "Держите локти около корпуса, не раскачивайтесь."),
+  basicMachine("cable_crossover", "Сведение рук в кроссовере", "Cable Crossover / Cable Fly", "back_upper", ["Грудные"], "Сведение рук с двумя тросами стоя, не сидячая бабочка.", "Сохраняйте небольшой сгиб локтей и двигайтесь плавно."),
+  basicMachine("seated_leg_curl", "Сгибание ног сидя", "Seated Leg Curl", "glutes_legs", ["Бицепс бедра", "Полусухожильная"], "Сгибание коленей сидя с валиком, не сгибание лёжа и не разгибание ног.", "Совместите ось колена с осью тренажёра и прижмите таз к сиденью."),
+  basicMachine("standing_calf_raise", "Подъём на носки стоя в тренажёре", "Standing Calf Raise", "glutes_legs", ["Икроножные", "Камбаловидная"], "Подъём пяток стоя под плечевыми упорами.", "Опускайте пятки контролируемо, без пружинящих рывков."),
+  basicMachine("seated_calf_raise", "Подъём на носки сидя", "Seated Calf Raise", "glutes_legs", ["Камбаловидная", "Икроножные"], "Подъём пяток сидя с упорами на бёдрах.", "Двигайтесь плавно и не отбивайте вес коленями."),
+  basicMachine("smith_squat", "Приседания в Смите", "Smith Machine Squat", "glutes_legs", ["Квадрицепсы", "Ягодицы"], "Приседания с грифом на направляющих; не выпады в Смите.", "Настройте страховочные упоры и выберите комфортную глубину."),
+  basicMachine("cable_glute_kickback", "Отведение ноги назад на блоке", "Cable Glute Kickback", "glutes_legs", ["Большая ягодичная"], "Мах или отведение одной ноги назад с манжетой нижнего блока.", "Не компенсируйте движение прогибом поясницы."),
+  basicMachine("ab_crunch_machine", "Скручивания в тренажёре на пресс", "Abdominal Crunch Machine", "abs_core", ["Прямая мышца живота"], "Сгибание корпуса сидя в тренажёре с сопротивлением; не скамья для пресса.", "Сгибайте корпус контролируемо, не тяните голову руками."),
+  basicMachine("cable_crunch", "Скручивания на верхнем блоке", "Cable Crunch", "abs_core", ["Прямая мышца живота"], "Скручивания с канатом верхнего блока на коленях, упражнение молитва.", "Сгибайте корпус, не превращайте движение в тягу руками."),
   // --- Ягодицы и ноги ---
   {
     id: "glute_bridge_bench",

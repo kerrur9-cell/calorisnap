@@ -17,6 +17,7 @@ import { todayKey } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types/database";
 import { LinkAccount } from "@/components/app/LinkAccount";
+import { NotificationSettings } from "@/components/app/NotificationSettings";
 
 export default function ProfilePage() {
   return (
@@ -321,6 +322,9 @@ function ProfileFlow() {
 
       {/* Друзья и гостевой доступ (только для владельца) */}
       {!isGuestView && <FriendsSection />}
+
+      {/* Уведомления на устройстве владельца профиля */}
+      {!isGuestView && <NotificationSettings />}
 
       {/* Тема (только для владельца) */}
       {!isGuestView && (

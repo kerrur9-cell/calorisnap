@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (pointer: coarse) {
+  .scroll-sway, .scroll-sway-reverse, .scroll-sway-subtle {
+    transform: none !important;
+    will-change: auto !important;
+  }
+  .animate-ambient { animation: none !important; will-change: auto; }
+}
+
+:where(button, a, input, select, summary):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*

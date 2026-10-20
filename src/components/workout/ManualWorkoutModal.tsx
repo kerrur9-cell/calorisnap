@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, Plus, Check, Sparkles, Loader2 } from "lucide-react";
 import type { WorkoutEntry } from "@/lib/workout/types";
+import { useDialog } from "@/hooks/useDialog";
 
 interface ManualWorkoutModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export function ManualWorkoutModal({
   userAge = 25,
   onAddWorkout,
 }: ManualWorkoutModalProps) {
+  const dialogRef = useDialog(isOpen, onClose);
   const [name, setName] = useState("");
   const [calories, setCalories] = useState("");
   const [minutes, setMinutes] = useState("");
@@ -46,6 +48,7 @@ export function ManualWorkoutModal({
     setAiError(null);
     try {
       const res = await fetch("/api/ai/workout-parse", {
+        signal: AbortSignal.timeout(26000),
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -57,7 +60,7 @@ export function ManualWorkoutModal({
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => { throw new Error("Сервер не ответил. Попробуйте ещё раз."); });
       if (!res.ok) {
         throw new Error(data.error || "Не удалось рассчитать");
       }
@@ -81,7 +84,7 @@ export function ManualWorkoutModal({
         });
       }
     } catch (err) {
-      setAiError(err instanceof Error ? err.message : "Ошибка расчёта");
+      setAiError(err instanceof Error && err.name === "TimeoutError" ? "Расчёт занял слишком много времени. Попробуйте ещё раз." : err instanceof Error ? err.message : "Ошибка расчёта");
     } finally {
       setIsAiLoading(false);
     }
@@ -121,7 +124,7 @@ export function ManualWorkoutModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Вписать расход калорий" tabIndex={-1} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
       <div className="glass-card w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-border/80 bg-background/95 p-5 shadow-2xl animate-slide-up">
         <div className="flex items-center justify-between border-b border-border/40 pb-3 mb-4">
           <h2 className="font-bold text-foreground text-base sm:text-lg">

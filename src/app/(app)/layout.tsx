@@ -1,4 +1,5 @@
 import { TabBar } from "@/components/app/TabBar";
+import { NotificationSettings } from "@/components/app/NotificationSettings";
 import { ThemeSync } from "@/components/app/ThemeSync";
 import { ScrollPhysics } from "@/components/app/ScrollPhysics";
 import { FriendViewProvider } from "@/context/FriendViewContext";
@@ -67,6 +68,7 @@ export default async function AppLayout({
         <ScrollPhysics />
         {/* Один скролл-контейнер с отступом под таб-бар */}
         <div className="pb-24">
+          <div className="px-4"><NotificationSettings key={user.id} compact /></div>
           {children}
           <footer className="px-4 pb-2 text-center text-xs text-muted-foreground">
             Данные о части продуктов: <a href="https://world.openfoodfacts.org" className="underline">Open Food Facts</a> (ODbL)

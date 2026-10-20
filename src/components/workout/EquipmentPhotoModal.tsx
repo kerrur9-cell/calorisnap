@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, ChangeEvent, useMemo } from "react";
-import { Camera, X, AlertCircle, Check, Loader2, Sparkles } from "lucide-react";
+import { Camera, ImagePlus, X, AlertCircle, Check, Loader2, Sparkles } from "lucide-react";
 import type { WorkoutEntry } from "@/lib/workout/types";
 import { processImageFile } from "@/lib/image";
 import { calculateDetailedWorkout } from "@/lib/workout/calculator";
+import { useDialog } from "@/hooks/useDialog";
 
 interface EquipmentPhotoModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ interface EquipmentPhotoModalProps {
 }
 
 interface DetectedMachine {
+  machineId?: string;
   machineName: string;
   machineNameEn?: string;
   category: WorkoutEntry["category"];
@@ -39,7 +41,10 @@ export function EquipmentPhotoModal({
   userAge = 25,
   onAddWorkout,
 }: EquipmentPhotoModalProps) {
+  const dialogRef = useDialog(isOpen, onClose);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const lastPhotoRef = useRef<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,18 +56,22 @@ export function EquipmentPhotoModal({
   const [minutes, setMinutes] = useState(20);
   const [weightKg, setWeightKg] = useState<number>(30);
   const [aiRefinedAdvice, setAiRefinedAdvice] = useState<string | null>(null);
-  const [aiCalories, setAiCalories] = useState<number | null>(null);
   const [isAiRefining, setIsAiRefining] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
+    await analyzePhoto(file);
+  };
+
+  const analyzePhoto = async (file: File) => {
+    lastPhotoRef.current = file;
 
     setError(null);
     setDetected(null);
     setAiRefinedAdvice(null);
-    setAiCalories(null);
     setIsSaved(false);
 
     try {
@@ -80,6 +89,7 @@ export function EquipmentPhotoModal({
           userWeightKg,
           userGender,
         }),
+        signal: AbortSignal.timeout(26_000),
       });
 
       const data = await res.json();
@@ -110,7 +120,7 @@ export function EquipmentPhotoModal({
       category: detected.category,
       sets: detected.category !== "cardio" ? sets : undefined,
       reps: detected.category !== "cardio" ? reps : undefined,
-      weightKg: detected.category !== "cardio" ? weightKg : undefined,
+      weightKg: detected.category !== "cardio" && !detected.machineId?.startsWith("assisted_") ? weightKg : undefined,
       durationMinutes: detected.category === "cardio" ? minutes : undefined,
       userWeightKg,
       userHeightCm,
@@ -143,7 +153,6 @@ export function EquipmentPhotoModal({
       const data = await res.json();
       if (data) {
         if (data.advice) setAiRefinedAdvice(data.advice);
-        if (typeof data.caloriesBurned === "number") setAiCalories(data.caloriesBurned);
       }
     } catch {
       // ignore
@@ -154,14 +163,14 @@ export function EquipmentPhotoModal({
 
   const handleSave = () => {
     if (!detected) return;
-    const finalCalories = aiCalories ?? (detailedCalc?.activeCalories ?? 0);
+    const finalCalories = detailedCalc?.activeCalories ?? 0;
     onAddWorkout({
       exerciseName: detected.machineName,
       category: detected.category,
       durationMinutes: detected.category === "cardio" ? minutes : undefined,
       sets: detected.category !== "cardio" ? sets : undefined,
       reps: detected.category !== "cardio" ? reps : undefined,
-      weightKg: detected.category !== "cardio" ? weightKg : undefined,
+      weightKg: detected.category !== "cardio" && !detected.machineId?.startsWith("assisted_") ? weightKg : undefined,
       caloriesBurned: finalCalories,
       grossCalories: detailedCalc?.grossCalories,
       activeCalories: finalCalories,
@@ -182,15 +191,15 @@ export function EquipmentPhotoModal({
   const resetState = () => {
     setPhotoPreview(null);
     setDetected(null);
-    setAiCalories(null);
     setError(null);
     setIsSaved(false);
+    lastPhotoRef.current = null;
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Распознать тренажёр по фото" tabIndex={-1} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
       <div className="glass-card flex max-h-[90vh] w-full max-w-lg flex-col rounded-t-3xl sm:rounded-3xl border border-border/80 bg-background/95 p-5 shadow-2xl overflow-y-auto animate-slide-up">
         {/* Заголовок */}
         <div className="flex items-center justify-between border-b border-border/40 pb-3 mb-4">
@@ -228,6 +237,15 @@ export function EquipmentPhotoModal({
           onChange={handleFileChange}
           className="hidden"
         />
+        <input type="file" ref={galleryInputRef} accept="image/*" onChange={handleFileChange} className="hidden" />
+
+        {photoPreview && !isLoading && (
+          <div className="mb-3 flex flex-wrap gap-3 text-sm text-primary">
+            <button type="button" onClick={() => galleryInputRef.current?.click()}>Выбрать из галереи</button>
+            <button type="button" onClick={() => fileInputRef.current?.click()}>Сделать фото</button>
+            {error && <button type="button" onClick={() => { if (lastPhotoRef.current) void analyzePhoto(lastPhotoRef.current); }}>Повторить с этим фото</button>}
+          </div>
+        )}
 
         {/* Ошибки */}
         {error && (
@@ -254,7 +272,10 @@ export function EquipmentPhotoModal({
                 onClick={() => fileInputRef.current?.click()}
                 className="btn-glossy spring-press flex items-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-md"
               >
-                <Camera className="h-4 w-4" /> Открыть камеру / фото
+                <Camera className="h-4 w-4" /> Сделать фото
+              </button>
+              <button type="button" onClick={() => galleryInputRef.current?.click()} className="flex items-center gap-2 rounded-2xl border border-border px-5 py-3 text-sm font-bold">
+                <ImagePlus className="h-4 w-4" /> Из галереи
               </button>
             </div>
           </div>
@@ -398,7 +419,7 @@ export function EquipmentPhotoModal({
                     <div className="rounded-2xl border border-border/70 p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-semibold text-muted-foreground">
-                          Рабочий вес на тренажере
+                          {detected.machineId === "assisted_pullup" || detected.machineId === "assisted_dips" ? "Противовес (не учитывается в калориях)" : "Рабочий вес на тренажере"}
                         </label>
                         <span className="text-sm font-bold text-primary tabular-nums">
                           {weightKg} кг
@@ -481,14 +502,9 @@ export function EquipmentPhotoModal({
                   <div>
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                       <span>Активный расход ({userWeightKg} кг)</span>
-                      {aiCalories !== null && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                          <Sparkles className="h-2.5 w-2.5" /> ИИ подтвердил
-                        </span>
-                      )}
                     </div>
                     <div className="text-2xl font-extrabold text-primary tabular-nums">
-                      ~{aiCalories ?? (detailedCalc?.activeCalories ?? 0)}{" "}
+                      ~{detailedCalc?.activeCalories ?? 0}{" "}
                       <span className="text-sm font-normal text-foreground">ккал</span>
                     </div>
                     {detailedCalc && (
