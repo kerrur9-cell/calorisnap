@@ -1,14 +1,15 @@
-import { analyzeFoodPhoto, type AnalyzePhotoInput } from "./gemini";
+import { analyzeFoodPhoto } from "./gemini";
 import { analyzeFoodPhotoWithOpenRouter } from "./openrouter";
 import { analyzeFoodPhotoWithGroq } from "./groq";
 import { judgeAnalysesWithJev, type CandidateAnalysis } from "./jev-judge";
+import type { FoodAnalysisInput } from "./food-input";
 import type { AiAnalysisResponse } from "./schema";
 
 export type AnalysisProvider = "gemini" | "openrouter" | "groq";
 
-export interface MultiModelAnalysisOptions extends AnalyzePhotoInput {
+export type MultiModelAnalysisOptions = FoodAnalysisInput & {
   forcedProvider?: AnalysisProvider;
-}
+};
 
 /**
  * Запускает 3 нейросети одновременно (Gemini, OpenRouter, Groq),

@@ -2,10 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { generateGeminiJson } from "@/lib/ai/gemini";
-import { voiceResponseSchema } from "@/lib/voice/schema";
+import { voiceResponseSchema, type VoiceItem } from "@/lib/voice/schema";
+import { analyzeFoodPhotoWithConsensus } from "@/lib/ai/consensus";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+
+async function refineFoodWithConsensus(transcript: string, fallbackItems: VoiceItem[]) {
+  if (!transcript.trim()) return { items: fallbackItems };
+  try {
+    const consensusResult = await analyzeFoodPhotoWithConsensus({
+      description: transcript.trim(),
+    });
+    if (consensusResult.is_food && consensusResult.items.length > 0) {
+      const mappedItems: VoiceItem[] = consensusResult.items.map((it) => {
+        const factor = it.weight_grams / 100;
+        return {
+          name: it.name_local || it.name,
+          weight_grams: it.weight_grams,
+          calories: Math.round(it.calories_per_100g * factor),
+          protein_g: Math.round(it.protein_per_100g * factor * 10) / 10,
+          fat_g: Math.round(it.fat_per_100g * factor * 10) / 10,
+          carbs_g: Math.round(it.carbs_per_100g * factor * 10) / 10,
+        };
+      });
+      const totalCal = Math.round(mappedItems.reduce((s, it) => s + it.calories, 0));
+      return {
+        items: mappedItems,
+        aiResponse: `Записал: ${mappedItems.map((i) => i.name).join(", ")} (~${totalCal} ккал). Проверьте граммовки перед сохранением.`,
+        tips: consensusResult.warnings?.[0],
+      };
+    }
+  } catch (err) {
+    console.warn("Consensus JEV arbitration for voice transcript failed, using fallback:", err);
+  }
+  return { items: fallbackItems };
+}
 
 const requestSchema = z.object({
   transcript: z.string().trim().max(500).optional(),
@@ -146,13 +178,29 @@ export async function POST(request: NextRequest) {
       });
 
       let aiResponse = parsed.aiResponse?.trim() || "";
+      let items = parsed.items;
+      let tips = parsed.tips;
+      let status = parsed.status;
+      const transcript = parsed.transcript || body.transcript || "";
+
+      // Если распознана еда — отдаём на судейство арбитру JEV (через мультимодельный консенсус)
+      if ((status === "success" || status === "clarification_needed" || items.length > 0) && transcript.trim()) {
+        const refined = await refineFoodWithConsensus(transcript, items);
+        if (refined.items.length > 0) {
+          items = refined.items;
+          if (refined.aiResponse) aiResponse = refined.aiResponse;
+          if (refined.tips) tips = refined.tips;
+          status = "success";
+        }
+      }
+
       if (!aiResponse) {
-        if (parsed.items.length > 0) {
-          const totalCal = Math.round(parsed.items.reduce((s, it) => s + it.calories, 0));
-          aiResponse = `Распознано: ${parsed.items.map((i) => i.name).join(", ")} (~${totalCal} ккал). Проверьте граммовки.`;
-        } else if (parsed.status === "question_answered") {
+        if (items.length > 0) {
+          const totalCal = Math.round(items.reduce((s, it) => s + it.calories, 0));
+          aiResponse = `Распознано: ${items.map((i) => i.name).join(", ")} (~${totalCal} ккал). Проверьте граммовки.`;
+        } else if (status === "question_answered") {
           aiResponse = "Ответил на ваш вопрос по питанию.";
-        } else if (parsed.status === "not_food") {
+        } else if (status === "not_food") {
           aiResponse = "Я ассистент питания CaloriSnap 🥗. Назовите съеденные блюда или спросите совет по КБЖУ.";
         } else {
           aiResponse = "Не удалось разобрать блюда. Попробуйте надиктовать ещё раз или введите текстом.";
@@ -160,12 +208,12 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json({
-        transcript: parsed.transcript || body.transcript || "",
-        status: parsed.status,
+        transcript,
+        status,
         suggestedMealType: parsed.suggestedMealType ?? body.defaultMealType ?? "snack",
-        items: parsed.items,
+        items,
         aiResponse,
-        tips: parsed.tips,
+        tips,
       });
     } catch (err) {
       console.error("Gemini voice parse error:", err);
@@ -211,13 +259,28 @@ export async function POST(request: NextRequest) {
         const content = data?.choices?.[0]?.message?.content;
         if (content) {
           const parsed = voiceResponseSchema.parse(JSON.parse(content));
+          let items = parsed.items;
+          let aiResponse = parsed.aiResponse || "Фраза обработана.";
+          let tips = parsed.tips;
+          let status = parsed.status;
+
+          if ((status === "success" || status === "clarification_needed" || items.length > 0) && body.transcript?.trim()) {
+            const refined = await refineFoodWithConsensus(body.transcript, items);
+            if (refined.items.length > 0) {
+              items = refined.items;
+              if (refined.aiResponse) aiResponse = refined.aiResponse;
+              if (refined.tips) tips = refined.tips;
+              status = "success";
+            }
+          }
+
           return NextResponse.json({
             transcript: body.transcript,
-            status: parsed.status,
+            status,
             suggestedMealType: parsed.suggestedMealType ?? body.defaultMealType ?? "snack",
-            items: parsed.items,
-            aiResponse: parsed.aiResponse || "Фраза обработана.",
-            tips: parsed.tips,
+            items,
+            aiResponse,
+            tips,
           });
         }
       }

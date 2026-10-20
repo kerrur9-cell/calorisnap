@@ -2,6 +2,7 @@ import { z } from "zod";
 import { FOOD_ANALYSIS_PROMPT } from "./prompts";
 import { safeParseAnalysis, type AiAnalysisResponse } from "./schema";
 import { normalizeFoodPreparation } from "../nutrition/food-preparation";
+import { foodAnalysisContent, type FoodAnalysisInput } from "./food-input";
 
 /**
  * Клиент Gemini. Вызывается ТОЛЬКО с сервера (Route Handler),
@@ -142,7 +143,7 @@ export function rebalanceWeights(
 }
 
 export async function analyzeFoodPhoto(
-  input: AnalyzePhotoInput,
+  input: FoodAnalysisInput,
   attempt: "primary" | "secondary" = "primary",
 ): Promise<AiAnalysisResponse> {
   const apiKey = (attempt === "secondary"
@@ -152,39 +153,42 @@ export async function analyzeFoodPhoto(
     throw new Error("AI не настроен: отсутствует ключ Gemini");
   }
 
-  // Дополняем промпт переданным весом или флагом принудительного анализа еды
-  let prompt = FOOD_ANALYSIS_PROMPT;
-  if (input.forceFood) {
-    prompt +=
-      `\n\nВАЖНО: Пользователь подтвердил, что на фото ТОЧНО еда или напиток (возможно, необычной формы или подачи). ` +
-      `Обязательно найди съедобные продукты и верни "is_food": true.`;
-  }
-  if (input.totalWeightGrams && input.totalWeightGrams > 0) {
-    prompt +=
-      `\n\nПОЛЬЗОВАТЕЛЬ УКАЗАЛ ОБЩИЙ ВЕС ПОРЦИИ: ${input.totalWeightGrams} г. ` +
-      `Распредели этот вес между продуктами пропорционально визуальному объёму и верни total_weight_grams=${input.totalWeightGrams}.`;
+  let parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>;
+  if ("description" in input) {
+    parts = [{ text: foodAnalysisContent(input, FOOD_ANALYSIS_PROMPT)[0].text }];
+  } else {
+    let prompt = FOOD_ANALYSIS_PROMPT;
+    if (input.forceFood) {
+      prompt +=
+        `\n\nВАЖНО: Пользователь подтвердил, что на фото ТОЧНО еда или напиток (возможно, необычной формы или подачи). ` +
+        `Обязательно найди съедобные продукты и верни "is_food": true.`;
+    }
+    if (input.totalWeightGrams && input.totalWeightGrams > 0) {
+      prompt +=
+        `\n\nПОЛЬЗОВАТЕЛЬ УКАЗАЛ ОБЩИЙ ВЕС ПОРЦИИ: ${input.totalWeightGrams} г. ` +
+        `Распредели этот вес между продуктами пропорционально визуальному объёму и верни total_weight_grams=${input.totalWeightGrams}.`;
+    }
+    parts = [
+      { text: prompt },
+      {
+        inline_data: {
+          mime_type: input.mimeType,
+          data: input.dataBase64,
+        },
+      },
+    ];
   }
 
   const body = {
     contents: [
       {
         role: "user",
-        parts: [
-          { text: prompt },
-          {
-            inline_data: {
-              mime_type: input.mimeType,
-              data: input.dataBase64,
-            },
-          },
-        ],
+        parts,
       },
     ],
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.1,
-      // Побольше токенов: у тарелки со многими ингредиентами длинный JSON,
-      // на обрезке модель выдавала битый ответ
       maxOutputTokens: 4096,
     },
   };
@@ -217,7 +221,14 @@ export async function analyzeFoodPhoto(
     );
   }
 
-  return rebalanceWeights(normalizeFoodPreparation(parsed.data), input.totalWeightGrams);
+  const result = rebalanceWeights(
+    normalizeFoodPreparation(parsed.data, "description" in input ? input.description : undefined),
+    input.totalWeightGrams,
+  );
+  if ("description" in input && result.is_food) {
+    result.warnings = [...result.warnings, "Вес без указанной граммовки и КБЖУ оценены приблизительно. Проверьте порции перед сохранением."];
+  }
+  return result;
 }
 
 export interface GeminiJsonOptions<T = unknown> {
