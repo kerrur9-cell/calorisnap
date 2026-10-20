@@ -73,7 +73,7 @@ function CameraFlow() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [analysisAttempt, setAnalysisAttempt] = useState<"groq" | null>(null);
+  const [analysisAttempt, setAnalysisAttempt] = useState<"openrouter" | "groq" | null>(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
 
   useEffect(() => {
@@ -113,7 +113,7 @@ function CameraFlow() {
       });
       let json = await res.json();
 
-      for (let fallback = 0; !res.ok && json.retryable && json.nextAttempt === "groq" && fallback < 1; fallback++) {
+      for (let fallback = 0; !res.ok && json.retryable && Boolean(json.nextAttempt) && fallback < 2; fallback++) {
         setRetrying(true);
         setAnalysisAttempt(json.nextAttempt);
         res = await fetch(endpoint, {
@@ -515,7 +515,7 @@ const ANALYSIS_MESSAGES = [
   "Сверяем калории и БЖУ…",
 ];
 
-function AnalyzingStage({ retrying, attempt, textAnalysis }: { retrying: boolean; attempt: "groq" | null; textAnalysis: boolean }) {
+function AnalyzingStage({ retrying, attempt, textAnalysis }: { retrying: boolean; attempt: "openrouter" | "groq" | null; textAnalysis: boolean }) {
   const [messageIndex, setMessageIndex] = useState(0);
   useEffect(() => {
     if (retrying) return;
@@ -531,7 +531,13 @@ function AnalyzingStage({ retrying, attempt, textAnalysis }: { retrying: boolean
       <div>
         <p className="text-lg font-semibold">{textAnalysis ? "Разбираем описание еды…" : retrying ? "Проверяем фото ещё раз…" : "Распознаём еду…"}</p>
         <p className="mt-2 min-h-10 text-sm text-muted-foreground">
-          {attempt === "groq" ? "Подключаем запасной анализатор Groq…" : textAnalysis ? "Оцениваем порции и КБЖУ. Результат можно будет поправить." : ANALYSIS_MESSAGES[messageIndex]}
+          {attempt === "groq"
+            ? "Подключаем запасной анализатор Groq…"
+            : attempt === "openrouter"
+            ? "Подключаем резервный анализатор OpenRouter…"
+            : textAnalysis
+            ? "Оцениваем порции и КБЖУ. Результат можно будет поправить."
+            : ANALYSIS_MESSAGES[messageIndex]}
         </p>
       </div>
     </div>

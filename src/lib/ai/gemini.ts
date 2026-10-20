@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { FOOD_ANALYSIS_PROMPT } from "./prompts";
 import { safeParseAnalysis, type AiAnalysisResponse } from "./schema";
+import { normalizeFoodPreparation } from "../nutrition/food-preparation";
 
 /**
  * Клиент Gemini. Вызывается ТОЛЬКО с сервера (Route Handler),
@@ -216,7 +217,7 @@ export async function analyzeFoodPhoto(
     );
   }
 
-  return rebalanceWeights(parsed.data, input.totalWeightGrams);
+  return rebalanceWeights(normalizeFoodPreparation(parsed.data), input.totalWeightGrams);
 }
 
 export interface GeminiJsonOptions<T = unknown> {

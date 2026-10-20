@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeFoodPhotoWithGroq } from "@/lib/ai/groq";
+import { analyzeFoodPhoto } from "@/lib/ai/gemini";
 import { analyzeFoodPhotoWithOpenRouter } from "@/lib/ai/openrouter";
+import { analyzeFoodPhotoWithGroq } from "@/lib/ai/groq";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
@@ -76,27 +77,34 @@ async function analyzeRequest(request: NextRequest) {
 
   try {
     const attemptHeader = request.headers.get("x-analysis-attempt");
-    // Legacy clients may still send "tertiary" for Groq. Gemini is paused for photos.
-    const useGroq = attemptHeader === "groq" || attemptHeader === "tertiary";
     const input = {
       dataBase64,
       mimeType,
       totalWeightGrams,
       forceFood: body.force_food,
     };
-    const result = useGroq
-      ? await analyzeFoodPhotoWithGroq(input)
-      : await analyzeFoodPhotoWithOpenRouter(input);
+    let result;
+    if (attemptHeader === "groq" || attemptHeader === "tertiary") {
+      result = await analyzeFoodPhotoWithGroq(input);
+    } else if (attemptHeader === "openrouter" || attemptHeader === "secondary") {
+      result = await analyzeFoodPhotoWithOpenRouter(input);
+    } else if (process.env.GEMINI_API_KEY?.trim()) {
+      result = await analyzeFoodPhoto(input);
+    } else {
+      result = await analyzeFoodPhotoWithOpenRouter(input);
+    }
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
-    // The provider code intentionally exposes only human-safe messages; showing
-    // them here lets the user distinguish an overloaded model from a bad photo.
+    const attempt = request.headers.get("x-analysis-attempt");
+    let nextAttempt: "openrouter" | "groq" | null = null;
+    if (!attempt || attempt === "primary" || attempt === "gemini") {
+      nextAttempt = process.env.OPENROUTER_API_KEY ? "openrouter" : (process.env.GROQ_API_KEY ? "groq" : null);
+    } else if (attempt === "openrouter" || attempt === "secondary") {
+      nextAttempt = process.env.GROQ_API_KEY ? "groq" : null;
+    }
     const message = error instanceof Error && error.message.length <= 180
       ? error.message
       : "Не удалось распознать фото. Попробуйте ещё раз или добавьте еду вручную.";
-    const attempt = request.headers.get("x-analysis-attempt");
-    const nextAttempt = attempt === "groq" || attempt === "tertiary"
-      ? null : process.env.GROQ_API_KEY ? "groq" : null;
     return NextResponse.json({ error: message, retryable: Boolean(nextAttempt), nextAttempt }, { status: 503 });
   }
 }
