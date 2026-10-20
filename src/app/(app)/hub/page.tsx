@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Circle,
   Dumbbell,
+  Film,
 } from "lucide-react";
 import { useGamification } from "@/hooks/useGamification";
 import { useProfile } from "@/hooks/useProfile";
@@ -77,6 +78,32 @@ export default function HubPage() {
         </p>
       </header>
 
+      {/* Главная новинка: Китайские AI-сериалы */}
+      <Link
+        href="/dramas"
+        className="glass-card glossy-sheen mb-5 flex items-center justify-between gap-3.5 rounded-3xl p-4 shadow-md border border-violet-500/30 bg-gradient-to-r from-violet-500/10 via-card to-primary/10 hover:border-violet-500/50 transition-all active:scale-[0.98]"
+      >
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl bg-gradient-to-tr from-violet-600 to-fuchsia-600 border border-violet-400/40 p-2.5 shadow-sm text-white">
+            <Film className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-foreground text-sm">
+                Китайские AI-сериалы
+              </span>
+              <span className="rounded-full bg-violet-600 px-1.5 py-0.5 text-[9px] font-extrabold text-white">
+                NEW
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Бесконечная лента мини-дорам с русской озвучкой
+            </div>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </Link>
+
       {/* Быстрые инструменты */}
       <section className="mb-5 grid grid-cols-2 gap-3">
         <button
@@ -119,7 +146,12 @@ export default function HubPage() {
       </section>
 
       <nav aria-label="Полезные инструменты" className="mb-5 divide-y divide-border rounded-2xl border border-border bg-card px-4">
-        {[{ href: "/foods", title: "Найти продукт", hint: "Поиск и добавление еды" }, { href: "/calculator", title: "Калькулятор порции", hint: "Калории и БЖУ по граммам" }, { href: "/burn", title: "Записать тренировку", hint: "Фото, текст или каталог" }].map((item) => (
+        {[
+          { href: "/dramas", title: "AI-Сериалы и Дорамы", hint: "Вертикальная лента коротких серий" },
+          { href: "/foods", title: "Найти продукт", hint: "Поиск и добавление еды" },
+          { href: "/calculator", title: "Калькулятор порции", hint: "Калории и БЖУ по граммам" },
+          { href: "/burn", title: "Записать тренировку", hint: "Фото, текст или каталог" },
+        ].map((item) => (
           <Link key={item.href} href={item.href} className="flex min-h-16 items-center justify-between gap-3 py-3">
             <span><span className="block text-sm font-semibold">{item.title}</span><span className="text-xs text-muted-foreground">{item.hint}</span></span>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />

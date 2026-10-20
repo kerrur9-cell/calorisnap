@@ -191,6 +191,76 @@ export type WorkoutDbEntry = {
   created_at: string;
 };
 
+export type DramaRow = {
+  id: string;
+  title: string;
+  original_title: string | null;
+  description: string | null;
+  cover_url: string;
+  banner_url: string | null;
+  tags: string[];
+  is_ai_generated: boolean;
+  language: string;
+  has_russian_voiceover: boolean;
+  has_russian_subtitles: boolean;
+  source_type: string;
+  source_id: string | null;
+  total_episodes: number;
+  status: string;
+  view_count: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DramaEpisodeRow = {
+  id: string;
+  drama_id: string;
+  episode_number: number;
+  title: string;
+  description: string | null;
+  video_id: string;
+  source_platform: string;
+  duration_seconds: number | null;
+  thumbnail_url: string | null;
+  is_available: boolean;
+  created_at: string;
+};
+
+export type DramaProgressRow = {
+  id: string;
+  user_id: string;
+  drama_id: string;
+  last_episode_id: string;
+  last_episode_number: number;
+  progress_seconds: number;
+  is_completed: boolean;
+  updated_at: string;
+};
+
+export type DramaFavoriteRow = {
+  id: string;
+  user_id: string;
+  drama_id: string;
+  created_at: string;
+};
+
+export type ContentSourceRow = {
+  id: string;
+  title: string;
+  platform: string;
+  source_type: string;
+  source_key: string;
+  default_language: string;
+  is_ai_content: boolean;
+  is_active: boolean;
+  last_synced_at: string | null;
+  last_sync_status: string;
+  last_sync_error: string | null;
+  etag: string | null;
+  created_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -205,6 +275,11 @@ export interface Database {
       workout_entries: Table<WorkoutDbEntry, "user_id" | "exercise_name">;
       friend_access_codes: Table<{ id: string; user_id: string; code: string; is_active: boolean; created_at: string; updated_at: string }, "user_id" | "code">;
       friend_connections: Table<{ id: string; owner_id: string; viewer_id: string; status: "active" | "revoked"; created_at: string; updated_at: string }, "owner_id" | "viewer_id">;
+      dramas: Table<DramaRow, "title" | "cover_url">;
+      drama_episodes: Table<DramaEpisodeRow, "drama_id" | "episode_number" | "title" | "video_id">;
+      drama_progress: Table<DramaProgressRow, "user_id" | "drama_id" | "last_episode_id" | "last_episode_number">;
+      drama_favorites: Table<DramaFavoriteRow, "user_id" | "drama_id">;
+      content_sources: Table<ContentSourceRow, "title" | "source_key">;
     };
     Views: {
       daily_stats: { Row: DailyStat; Relationships: [] };

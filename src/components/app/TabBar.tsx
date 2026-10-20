@@ -34,6 +34,7 @@ export function TabBar() {
   // Немедленный фоновый предзапрос всех вкладок и данных
   useEffect(() => {
     TABS.forEach((tab) => router.prefetch(tab.href));
+    router.prefetch("/dramas");
     if (!isGuestView) {
       router.prefetch("/camera");
     }
