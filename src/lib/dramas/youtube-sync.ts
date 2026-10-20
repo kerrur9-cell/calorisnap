@@ -62,7 +62,11 @@ export function cleanEpisodeTitle(rawTitle: string, epNum: number, dramaTitle?: 
     .replace(/\s+/g, " ")
     .trim();
 
-  // Если название слишком длинное или содержит дублирование сериала
+  if (dramaTitle && cleaned.toLowerCase().startsWith(dramaTitle.toLowerCase())) {
+    cleaned = cleaned.slice(dramaTitle.length).replace(/^[:\s-]+/, "").trim();
+  }
+
+  // Если название слишком длинное или пустое
   if (cleaned.length > 60 || !cleaned) {
     return `Серия ${epNum}`;
   }

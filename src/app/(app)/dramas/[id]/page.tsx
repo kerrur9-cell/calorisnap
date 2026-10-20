@@ -2,7 +2,6 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Star,
@@ -10,9 +9,7 @@ import {
   Sparkles,
   Film,
   CheckCircle2,
-  Calendar,
   Layers,
-  Share2,
 } from "lucide-react";
 import { useDrama, useToggleFavorite, useSaveDramaProgress } from "@/hooks/useDramas";
 import { DramaVideoPlayer } from "@/components/dramas/DramaVideoPlayer";
@@ -24,7 +21,6 @@ export default function DramaDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const router = useRouter();
   const { data: drama, isLoading, error } = useDrama(id);
   const toggleFavorite = useToggleFavorite();
   const saveProgress = useSaveDramaProgress();

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   X,
   Maximize2,
@@ -15,7 +16,11 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { useDramaPlayer } from "@/context/DramaPlayerContext";
-import { DedicatedDramaPlayer } from "./DedicatedDramaPlayer";
+
+const DedicatedDramaPlayer = dynamic(
+  () => import("./DedicatedDramaPlayer").then((m) => m.DedicatedDramaPlayer),
+  { ssr: false }
+);
 
 /**
  * Глобальный плавающий мини-плеер ("В окне" / Picture-in-Picture).

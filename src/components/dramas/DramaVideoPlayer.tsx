@@ -41,19 +41,15 @@ export function DramaVideoPlayer({
 }: DramaVideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadedVideoId, setLoadedVideoId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
+  const [errorVideoId, setErrorVideoId] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Сброс состояния при переключении серии
-  useEffect(() => {
-    setIsLoading(true);
-    setVideoError(null);
-    setIsPlaying(true);
-  }, [currentEpisode.videoId]);
+  const isLoading = loadedVideoId !== currentEpisode.videoId && errorVideoId !== currentEpisode.videoId;
+  const videoError = errorVideoId === currentEpisode.videoId ? "Видео временно недоступно для встраивания." : null;
 
   // Слушаем события от YouTube IFrame API через postMessage
   useEffect(() => {
@@ -62,7 +58,7 @@ export function DramaVideoPlayer({
       try {
         const parsed = JSON.parse(event.data);
         if (parsed.event === "onReady") {
-          setIsLoading(false);
+          setLoadedVideoId(currentEpisode.videoId);
         } else if (parsed.event === "onStateChange") {
           // data === 0 означает конец видео (ENDED)
           if (parsed.info === 0 || parsed.data === 0) {
@@ -78,18 +74,14 @@ export function DramaVideoPlayer({
             }
           } else if (parsed.info === 1 || parsed.data === 1) {
             // PLAYING
-            setIsLoading(false);
+            setLoadedVideoId(currentEpisode.videoId);
             setIsPlaying(true);
           } else if (parsed.info === 2 || parsed.data === 2) {
             // PAUSED
             setIsPlaying(false);
-          } else if (parsed.info === 3 || parsed.data === 3) {
-            // BUFFERING
-            setIsLoading(true);
           }
         } else if (parsed.event === "onError") {
-          setVideoError("Видео временно недоступно для встраивания.");
-          setIsLoading(false);
+          setErrorVideoId(currentEpisode.videoId);
         }
       } catch {
         // Игнорируем не-JSON сообщения
@@ -98,7 +90,7 @@ export function DramaVideoPlayer({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [currentEpisode.episodeNumber, hasNextEpisode, onNextEpisode, onEpisodeCompleted]);
+  }, [currentEpisode.videoId, currentEpisode.episodeNumber, hasNextEpisode, onNextEpisode, onEpisodeCompleted]);
 
   // Автоскрытие панели управления через 3 секунды бездействия
   const resetControlsTimer = () => {
@@ -171,7 +163,7 @@ export function DramaVideoPlayer({
         title={currentEpisode.title}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
         allowFullScreen
-        onLoad={() => setIsLoading(false)}
+        onLoad={() => setLoadedVideoId(currentEpisode.videoId)}
         className="h-full w-full object-contain pointer-events-auto"
       />
 

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
-  Star,
   Heart,
   ListVideo,
   ChevronDown,
@@ -14,8 +13,6 @@ import {
   Share2,
   Film,
   Check,
-  AlertCircle,
-  Loader2,
   Minimize2,
   Shuffle,
   CheckCircle2,
@@ -42,6 +39,20 @@ interface DramaFeedProps {
   initialEpisodeNumber?: number;
 }
 
+function findInitialFeedIndex(dramas: Drama[], dramaId?: string, epNum?: number): number {
+  if (!dramaId) return 0;
+  let idx = 0;
+  for (const drama of dramas) {
+    for (const ep of drama.episodes || []) {
+      if (drama.id === dramaId && (!epNum || ep.episodeNumber === epNum)) {
+        return idx;
+      }
+      idx++;
+    }
+  }
+  return 0;
+}
+
 export function DramaFeed({
   initialDramas,
   initialDramaId,
@@ -49,7 +60,9 @@ export function DramaFeed({
 }: DramaFeedProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(() =>
+    findInitialFeedIndex(initialDramas, initialDramaId, initialEpisodeNumber)
+  );
   const [isMuted, setIsMuted] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(true);
@@ -162,26 +175,18 @@ export function DramaFeed({
     [triggerHeart]
   );
 
-  // Вычисляем стартовый индекс при открытии (например, выбранный сериал из каталога)
+  // Прокручиваем к начальной серии при открытии конкретного сериала
   useEffect(() => {
-    if (feedItems.length === 0) return;
-
-    let targetIdx = 0;
-    if (initialDramaId) {
-      const foundIdx = feedItems.findIndex((it) => {
-        if (it.drama.id !== initialDramaId) return false;
-        if (initialEpisodeNumber) {
-          return it.episodeNumber === initialEpisodeNumber;
-        }
-        return true;
-      });
-      if (foundIdx >= 0) targetIdx = foundIdx;
-    }
-
-    setActiveIndex(targetIdx);
-
-    if (containerRef.current && targetIdx > 0) {
-      const targetElem = itemRefs.current[targetIdx];
+    if (!initialDramaId || feedItems.length === 0) return;
+    const foundIdx = feedItems.findIndex((it) => {
+      if (it.drama.id !== initialDramaId) return false;
+      if (initialEpisodeNumber) {
+        return it.episodeNumber === initialEpisodeNumber;
+      }
+      return true;
+    });
+    if (foundIdx > 0 && containerRef.current) {
+      const targetElem = itemRefs.current[foundIdx];
       if (targetElem) {
         targetElem.scrollIntoView({ behavior: "instant" });
       }
@@ -214,7 +219,7 @@ export function DramaFeed({
         }
       }, 500);
     }
-  }, [activeIndex, feedItems, saveProgress, showSwipeHint]);
+  }, [activeIndex, feedItems, saveProgress, showSwipeHint, setActiveIndex]);
 
   // Прокрутка к следующему видео
   const scrollToNext = useCallback(() => {
@@ -350,6 +355,24 @@ export function DramaFeed({
       >
         {feedItems.map((item, idx) => {
           const isActive = idx === activeIndex;
+          const isNear = Math.abs(idx - activeIndex) <= 1;
+
+          // ВИРТУАЛИЗАЦИЯ: за пределами активного окна (текущая, предыдущая, следующая)
+          // монтируется только ультра-легкий якорь скролла с неизменной высотой 100%.
+          // Это освобождает 99% DOM-узлов, картинок и памяти, предотвращая падение Safari и лаги на смартфонах.
+          if (!isNear) {
+            return (
+              <div
+                key={item.key}
+                ref={(el) => {
+                  itemRefs.current[idx] = el;
+                }}
+                className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-black flex items-center justify-center"
+                aria-hidden="true"
+              />
+            );
+          }
+
           // СТРОГОЕ ПРАВИЛО: ровно ОДНО видео монтируется в DOM. Никаких наложений звука!
           const shouldMountVideo = isActive && !isMiniPlayerOpen;
           const watched = isWatched(item.drama.id, item.episodeNumber);
@@ -367,8 +390,10 @@ export function DramaFeed({
               {/* Фоновое превью / Постер */}
               <img
                 src={item.episode.thumbnailUrl || item.drama.coverUrl}
-                alt={item.episode.title}
-                className="absolute inset-0 h-full w-full object-cover blur-md opacity-35 scale-105 pointer-events-none"
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover blur-sm opacity-35 scale-105 pointer-events-none transform-gpu"
+                loading={isActive ? "eager" : "lazy"}
+                decoding="async"
               />
 
               {/* Выделенный изолированный видео-плеер или карточка ожидания */}
@@ -393,6 +418,7 @@ export function DramaFeed({
                     alt={item.episode.title}
                     className="h-full w-full object-cover"
                     loading="lazy"
+                    decoding="async"
                   />
                   <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/80 text-white shadow-xl">

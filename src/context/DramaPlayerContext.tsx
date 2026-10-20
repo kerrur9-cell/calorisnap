@@ -48,22 +48,20 @@ const STORAGE_KEY = "calorisnap_watched_episodes_v1";
 
 export function DramaPlayerProvider({ children }: { children: React.ReactNode }) {
   // 1. Умный трекер просмотренных серий (мгновенное сохранение в localStorage)
-  const [watchedMap, setWatchedMap] = useState<Record<string, boolean>>({});
-  const watchedMapRef = useRef<Record<string, boolean>>({});
-  watchedMapRef.current = watchedMap;
-
-  useEffect(() => {
+  const [watchedMap, setWatchedMap] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setWatchedMap(parsed);
-        watchedMapRef.current = parsed;
-      }
+      return saved ? JSON.parse(saved) : {};
     } catch {
-      // Игнорируем ошибки квоты или JSON
+      return {};
     }
-  }, []);
+  });
+
+  const watchedMapRef = useRef<Record<string, boolean>>(watchedMap);
+  useEffect(() => {
+    watchedMapRef.current = watchedMap;
+  }, [watchedMap]);
 
   const markWatched = useCallback((dramaId: string, epNum: number, watched: boolean = true) => {
     setWatchedMap((prev) => {

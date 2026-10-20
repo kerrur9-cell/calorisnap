@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, X, Sparkles, Star, Mic, Subtitles } from "lucide-react";
+import { Search, X, Sparkles, Star } from "lucide-react";
 
 interface DramaFiltersProps {
   searchQuery: string;

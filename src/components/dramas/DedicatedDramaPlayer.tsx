@@ -27,12 +27,9 @@ export function DedicatedDramaPlayer({
   onEnded,
   className = "",
 }: DedicatedDramaPlayerProps) {
-  const [hasError, setHasError] = useState(false);
+  const [errorVideoId, setErrorVideoId] = useState<string | null>(null);
+  const hasError = errorVideoId === videoId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  useEffect(() => {
-    setHasError(false);
-  }, [videoId]);
 
   // Слушаем события от YouTube Player API для автоперехода
   useEffect(() => {
@@ -46,7 +43,7 @@ export function DedicatedDramaPlayer({
             if (onEnded) onEnded();
           }
         } else if (parsed.event === "onError") {
-          setHasError(true);
+          setErrorVideoId(videoId);
         }
       } catch {
         // Игнорируем не-JSON сообщения
@@ -55,7 +52,7 @@ export function DedicatedDramaPlayer({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onEnded]);
+  }, [onEnded, videoId]);
 
   const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=${
     autoplay ? 1 : 0

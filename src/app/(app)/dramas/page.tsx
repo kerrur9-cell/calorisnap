@@ -6,7 +6,6 @@ import {
   LayoutGrid,
   RefreshCw,
   Sparkles,
-  Play,
   RotateCcw,
   Loader2,
   CheckCircle2,

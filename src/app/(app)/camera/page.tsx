@@ -393,7 +393,6 @@ function NotFoodStage({
       {photo?.dataBase64 && (
         <div className="relative overflow-hidden rounded-2xl border-2 border-border shadow-sm max-w-[200px] max-h-[160px]">
           {/* Local data-URL preview: no remote image to optimize. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`data:${photo.mimeType};base64,${photo.dataBase64}`}
             alt="Снимок"

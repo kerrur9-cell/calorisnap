@@ -1,10 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { SEED_DRAMAS, SEED_SOURCES } from "./seed-data";
 import { syncPlaylistSource } from "./youtube-sync";
-import type { Drama, DramaEpisode, DramaWithEpisodes, DramaProgress, ContentSource } from "./types";
+import type { Drama, DramaEpisode, DramaWithEpisodes, DramaProgress } from "./types";
 
 // Локальный кэш в памяти на время работы Node-процесса
-let inMemoryDramas: DramaWithEpisodes[] = [...SEED_DRAMAS];
+const inMemoryDramas: DramaWithEpisodes[] = [...SEED_DRAMAS];
+let cachedDramasCatalog: DramaWithEpisodes[] | null = null;
+let lastDbCheckTime = 0;
+const DB_CACHE_TTL = 10 * 60 * 1000; // 10 минут
+
 const inMemoryProgress: Map<string, DramaProgress> = new Map(); // key: `${userId}:${dramaId}`
 const inMemoryFavorites: Set<string> = new Set(); // key: `${userId}:${dramaId}`
 let lastSyncTimestamp = 0;
@@ -25,84 +29,94 @@ export interface GetDramasOptions {
 export async function getDramas(options: GetDramasOptions = {}): Promise<Drama[]> {
   const { query, tag, isAi, favoriteOnly, userId } = options;
 
-  let allDramas: DramaWithEpisodes[] = inMemoryDramas;
+  let allDramas: DramaWithEpisodes[];
 
-  // Пытаемся прочитать из Supabase, если таблица создана
-  try {
-    const supabase = await createClient();
-    const { data: dbDramas, error } = await supabase
-      .from("dramas")
-      .select("*")
-      .eq("is_published", true)
-      .order("created_at", { ascending: false });
+  const now = Date.now();
+  if (cachedDramasCatalog && now - lastDbCheckTime < DB_CACHE_TTL) {
+    allDramas = cachedDramasCatalog;
+  } else {
+    allDramas = inMemoryDramas;
 
-    if (!error && dbDramas && dbDramas.length > 0) {
-      // Подгружаем эпизоды для сериалов из БД
-      const dramaIds = dbDramas.map((d) => d.id);
-      const { data: dbEpisodes } = await supabase
-        .from("drama_episodes")
+    // Пытаемся прочитать из Supabase, если таблица создана
+    try {
+      const supabase = await createClient();
+      const { data: dbDramas, error } = await supabase
+        .from("dramas")
         .select("*")
-        .in("drama_id", dramaIds)
-        .eq("is_available", true)
-        .order("episode_number", { ascending: true });
+        .eq("is_published", true)
+        .order("created_at", { ascending: false });
 
-      const episodesMap = new Map<string, DramaEpisode[]>();
-      for (const ep of dbEpisodes || []) {
-        const list = episodesMap.get(ep.drama_id) || [];
-        list.push({
-          id: ep.id,
-          dramaId: ep.drama_id,
-          episodeNumber: ep.episode_number,
-          title: ep.title,
-          description: ep.description,
-          videoId: ep.video_id,
-          sourcePlatform: ep.source_platform as "youtube",
-          durationSeconds: ep.duration_seconds,
-          thumbnailUrl: ep.thumbnail_url,
-          isAvailable: ep.is_available,
-          createdAt: ep.created_at,
-        });
-        episodesMap.set(ep.drama_id, list);
+      if (!error && dbDramas && dbDramas.length > 0) {
+        // Подгружаем эпизоды для сериалов из БД
+        const dramaIds = dbDramas.map((d) => d.id);
+        const { data: dbEpisodes } = await supabase
+          .from("drama_episodes")
+          .select("*")
+          .in("drama_id", dramaIds)
+          .eq("is_available", true)
+          .order("episode_number", { ascending: true });
+
+        const episodesMap = new Map<string, DramaEpisode[]>();
+        for (const ep of dbEpisodes || []) {
+          const list = episodesMap.get(ep.drama_id) || [];
+          list.push({
+            id: ep.id,
+            dramaId: ep.drama_id,
+            episodeNumber: ep.episode_number,
+            title: ep.title,
+            description: ep.description,
+            videoId: ep.video_id,
+            sourcePlatform: ep.source_platform as "youtube",
+            durationSeconds: ep.duration_seconds,
+            thumbnailUrl: ep.thumbnail_url,
+            isAvailable: ep.is_available,
+            createdAt: ep.created_at,
+          });
+          episodesMap.set(ep.drama_id, list);
+        }
+
+        allDramas = dbDramas.map((d) => ({
+          id: d.id,
+          title: d.title,
+          originalTitle: d.original_title,
+          description: d.description,
+          coverUrl: d.cover_url,
+          bannerUrl: d.banner_url,
+          tags: d.tags || [],
+          isAiGenerated: d.is_ai_generated,
+          language: d.language,
+          hasRussianVoiceover: d.has_russian_voiceover,
+          hasRussianSubtitles: d.has_russian_subtitles,
+          sourceType: d.source_type,
+          sourceId: d.source_id,
+          totalEpisodes: d.total_episodes,
+          status: d.status as "ongoing" | "completed",
+          viewCount: d.view_count,
+          isPublished: d.is_published,
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+          episodes: episodesMap.get(d.id) || [],
+        }));
       }
-
-      allDramas = dbDramas.map((d) => ({
-        id: d.id,
-        title: d.title,
-        originalTitle: d.original_title,
-        description: d.description,
-        coverUrl: d.cover_url,
-        bannerUrl: d.banner_url,
-        tags: d.tags || [],
-        isAiGenerated: d.is_ai_generated,
-        language: d.language,
-        hasRussianVoiceover: d.has_russian_voiceover,
-        hasRussianSubtitles: d.has_russian_subtitles,
-        sourceType: d.source_type,
-        sourceId: d.source_id,
-        totalEpisodes: d.total_episodes,
-        status: d.status as "ongoing" | "completed",
-        viewCount: d.view_count,
-        isPublished: d.is_published,
-        createdAt: d.created_at,
-        updatedAt: d.updated_at,
-        episodes: episodesMap.get(d.id) || [],
-      }));
+    } catch (err) {
+      // Если таблицы ещё нет в Supabase — используем проверенный inMemoryDramas
+      console.warn("Supabase dramas query failed, falling back to local memory store:", err);
     }
-  } catch (err) {
-    // Если таблицы ещё нет в Supabase — используем проверенный inMemoryDramas
-    console.warn("Supabase dramas query failed, falling back to local memory store:", err);
+
+    // По умолчанию AI-сериалы идут первыми в выдаче
+    allDramas = [...allDramas].sort((a, b) => {
+      if (a.isAiGenerated && !b.isAiGenerated) return -1;
+      if (!a.isAiGenerated && b.isAiGenerated) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    cachedDramasCatalog = allDramas;
+    lastDbCheckTime = now;
   }
 
-  // По умолчанию AI-сериалы идут первыми в выдаче
-  allDramas.sort((a, b) => {
-    if (a.isAiGenerated && !b.isAiGenerated) return -1;
-    if (!a.isAiGenerated && b.isAiGenerated) return 1;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
-
   // Привязываем пользовательский прогресс и избранное
-  let userProgressMap = new Map<string, DramaProgress>();
-  let userFavorites = new Set<string>();
+  const userProgressMap = new Map<string, DramaProgress>();
+  const userFavorites = new Set<string>();
 
   if (userId) {
     try {

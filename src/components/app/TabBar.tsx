@@ -31,15 +31,24 @@ export function TabBar() {
     setPendingHref(null);
   }
 
-  // Немедленный фоновый предзапрос всех вкладок и данных
+  // Отложенный фоновый предзапрос вкладок в idle-период, не блокирующий главный экран
   useEffect(() => {
-    TABS.forEach((tab) => router.prefetch(tab.href));
-    router.prefetch("/dramas");
-    if (!isGuestView) {
-      router.prefetch("/camera");
+    const prefetchIdle = () => {
+      TABS.forEach((tab) => router.prefetch(tab.href));
+      router.prefetch("/dramas");
+      if (!isGuestView) {
+        router.prefetch("/camera");
+      }
+    };
+
+    let idleId: number | NodeJS.Timeout;
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = (window as Window).requestIdleCallback(prefetchIdle, { timeout: 2500 });
+    } else {
+      idleId = setTimeout(prefetchIdle, 1200);
     }
 
-    // В свободное время (через 1с) прогреваем кэш данных для AI Хаба и Профиля
+    // В свободное время (через 2.5с) прогреваем кэш данных для AI Хаба и Профиля
     const timer = setTimeout(() => {
       queryClient.prefetchQuery({
         queryKey: ["weight-history"],
@@ -55,9 +64,16 @@ export function TabBar() {
         },
         staleTime: 60 * 1000,
       });
-    }, 1000);
+    }, 2500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      if (typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        (window as Window).cancelIdleCallback(idleId as number);
+      } else {
+        clearTimeout(idleId as NodeJS.Timeout);
+      }
+      clearTimeout(timer);
+    };
   }, [router, queryClient, isGuestView]);
 
   return (

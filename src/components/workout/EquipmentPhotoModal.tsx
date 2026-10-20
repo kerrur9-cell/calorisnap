@@ -285,7 +285,6 @@ export function EquipmentPhotoModal({
         {photoPreview && (
           <div className="space-y-4">
             <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border/80 bg-black/40">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={photoPreview}
                 alt="Тренажер"
