@@ -361,11 +361,29 @@ export function DramaFeed({
         ))}
       </div>
 
+      {/* Единый персистентный плеер: живет стабильно в DOM, переключает серии через loadVideoById без пересоздания iframe! */}
+      {!isMiniPlayerOpen && activeItem && (
+        <div className="absolute inset-0 z-10 pointer-events-auto">
+          <DedicatedDramaPlayer
+            videoId={activeItem.episode.videoId}
+            title={activeItem.episode.title}
+            thumbnailUrl={activeItem.episode.thumbnailUrl || activeItem.drama.coverUrl}
+            isMuted={isMuted}
+            autoplay={true}
+            onEnded={() => {
+              markWatched(activeItem.drama.id, activeItem.episodeNumber, true);
+              scrollToNext();
+            }}
+            className="h-full w-full object-cover"
+          />
+        </div>
+      )}
+
       {/* Вертикальный TikTok-контейнер со строгим scroll-snap */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full w-full overflow-y-scroll snap-y snap-mandatory scroll-smooth touch-pan-y overscroll-contain scrollbar-none"
+        className="relative z-20 h-full w-full overflow-y-scroll snap-y snap-mandatory scroll-smooth touch-pan-y overscroll-contain scrollbar-none"
         style={{
           scrollSnapType: "y mandatory",
           WebkitOverflowScrolling: "touch",
@@ -385,14 +403,12 @@ export function DramaFeed({
                 ref={(el) => {
                   itemRefs.current[idx] = el;
                 }}
-                className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-black flex items-center justify-center"
+                className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-transparent flex items-center justify-center"
                 aria-hidden="true"
               />
             );
           }
 
-          // СТРОГОЕ ПРАВИЛО: ровно ОДНО видео монтируется в DOM. Никаких наложений звука!
-          const shouldMountVideo = isActive && !isMiniPlayerOpen;
           const watched = isWatched(item.drama.id, item.episodeNumber);
 
           return (
@@ -403,40 +419,24 @@ export function DramaFeed({
               }}
               onDoubleClick={(e) => triggerHeart(e.clientX, e.clientY, item.drama.id)}
               onTouchEnd={(e) => handleTouchEnd(e, item.drama.id)}
-              className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-black flex items-center justify-center"
+              className="relative h-full w-full snap-start snap-always shrink-0 overflow-hidden bg-transparent flex items-center justify-center"
             >
-              {/* Фоновое превью / Постер */}
-              <img
-                src={item.episode.thumbnailUrl || item.drama.coverUrl}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover blur-sm opacity-35 scale-105 pointer-events-none transform-gpu"
-                loading={isActive ? "eager" : "lazy"}
-                decoding="async"
-              />
-
-              {/* Выделенный изолированный видео-плеер или карточка ожидания */}
-              {shouldMountVideo ? (
-                <DedicatedDramaPlayer
-                  key={`feed-player-${item.episode.videoId}`}
-                  videoId={item.episode.videoId}
-                  title={item.episode.title}
-                  thumbnailUrl={item.episode.thumbnailUrl || item.drama.coverUrl}
-                  isMuted={isMuted}
-                  autoplay={true}
-                  onEnded={() => {
-                    markWatched(item.drama.id, item.episodeNumber, true);
-                    scrollToNext();
-                  }}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
+              {/* Для неактивных карточек во время свайпа показываем их превью */}
+              {!isActive && (
                 <div
-                  className="relative h-full w-full flex items-center justify-center cursor-pointer"
+                  className="absolute inset-0 h-full w-full cursor-pointer bg-black"
                   onClick={() => {
                     itemRefs.current[idx]?.scrollIntoView({ behavior: "smooth" });
                     setActiveIndex(idx);
                   }}
                 >
+                  <img
+                    src={item.episode.thumbnailUrl || item.drama.coverUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover blur-sm opacity-35 scale-105 pointer-events-none transform-gpu"
+                    loading="lazy"
+                    decoding="async"
+                  />
                   <img
                     src={item.episode.thumbnailUrl || item.drama.coverUrl}
                     alt={item.episode.title}
@@ -448,11 +448,6 @@ export function DramaFeed({
                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/80 text-white shadow-xl">
                       <Play className="h-6 w-6 fill-white ml-0.5" />
                     </span>
-                    {isMiniPlayerOpen && isActive && (
-                      <span className="rounded-full bg-black/70 px-3 py-1 text-[11px] font-bold text-violet-300 border border-violet-500/30">
-                        Воспроизводится в окне
-                      </span>
-                    )}
                   </div>
                 </div>
               )}

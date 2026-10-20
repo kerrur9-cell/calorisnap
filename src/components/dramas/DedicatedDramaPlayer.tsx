@@ -14,9 +14,10 @@ interface DedicatedDramaPlayerProps {
 }
 
 /**
- * Изолированный выделенный видеоплеер для китайских ИИ-сериалов.
+ * Единый персистентный видеоплеер для AI-сериалов.
  * Поддерживает полноэкранный режим и вертикальный режим мини-окна (9:16).
- * Гарантирует АВТОМАТИЧЕСКИЙ ЗАПУСК без зависаний и необходимости ручного клика на каждой серии.
+ * Не пересоздает iframe при переключении серий, а использует loadVideoById,
+ * что гарантирует АВТОМАТИЧЕСКИЙ ЗАПУСК без зависаний и необходимости ручного клика.
  */
 export function DedicatedDramaPlayer({
   videoId,
@@ -30,15 +31,16 @@ export function DedicatedDramaPlayer({
   const [errorVideoId, setErrorVideoId] = useState<string | null>(null);
   const hasError = errorVideoId === videoId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const prevVideoIdRef = useRef(videoId);
 
   // Безопасная отправка команд в YouTube Player API через postMessage
-  const sendCommand = useCallback((func: string, args: unknown[] = []) => {
+  const sendCommand = useCallback((func: string, args?: unknown) => {
     try {
       if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(
-          JSON.stringify({ event: "command", func, args }),
-          "*"
-        );
+        const payload = args !== undefined
+          ? { event: "command", func, args }
+          : { event: "command", func };
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(payload), "*");
       }
     } catch {
       // Игнорируем редкие ограничения междоменных сообщений
@@ -54,6 +56,26 @@ export function DedicatedDramaPlayer({
       sendCommand("setVolume", [100]);
     }
   }, [isMuted, sendCommand]);
+
+  // ПЕРЕКЛЮЧЕНИЕ СЕРИЙ БЕЗ ПЕРЕСОЗДАНИЯ IFRAME:
+  // При смене серии используем loadVideoById в уже запущенном плеере!
+  // Это сохраняет пользовательскую активацию и воспроизводит видео мгновенно без блокировок браузера.
+  useEffect(() => {
+    if (prevVideoIdRef.current !== videoId) {
+      prevVideoIdRef.current = videoId;
+      setErrorVideoId(null);
+
+      // Загружаем и запускаем новую серию через API
+      sendCommand("loadVideoById", [videoId, 0]);
+      if (autoplay) {
+        sendCommand("playVideo");
+        if (!isMuted) {
+          sendCommand("unMute");
+          sendCommand("setVolume", [100]);
+        }
+      }
+    }
+  }, [videoId, autoplay, isMuted, sendCommand]);
 
   // Обработчик загрузки iframe: инициализирует API и мгновенно активирует автоплей
   const handleIframeLoad = useCallback(() => {
@@ -77,7 +99,7 @@ export function DedicatedDramaPlayer({
     }
   }, [autoplay, isMuted, sendCommand]);
 
-  // Двойное подтверждение автоплея на мобильных устройствах с дебаунсом
+  // Тройное подтверждение автоплея на мобильных устройствах
   useEffect(() => {
     if (!autoplay) return;
     const t1 = setTimeout(() => {
@@ -86,7 +108,7 @@ export function DedicatedDramaPlayer({
         sendCommand("unMute");
         sendCommand("setVolume", [100]);
       }
-    }, 200);
+    }, 150);
 
     const t2 = setTimeout(() => {
       sendCommand("playVideo");
@@ -94,11 +116,20 @@ export function DedicatedDramaPlayer({
         sendCommand("unMute");
         sendCommand("setVolume", [100]);
       }
-    }, 600);
+    }, 450);
+
+    const t3 = setTimeout(() => {
+      sendCommand("playVideo");
+      if (!isMuted) {
+        sendCommand("unMute");
+        sendCommand("setVolume", [100]);
+      }
+    }, 850);
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
     };
   }, [autoplay, isMuted, sendCommand, videoId]);
 
@@ -110,7 +141,7 @@ export function DedicatedDramaPlayer({
         const parsed = JSON.parse(event.data);
 
         // Когда плеер готов к воспроизведению
-        if (parsed.event === "onReady") {
+        if (parsed.event === "onReady" || parsed.event === "initialDelivery") {
           if (autoplay) {
             sendCommand("playVideo");
             if (!isMuted) {
@@ -122,6 +153,11 @@ export function DedicatedDramaPlayer({
           // 0 = ENDED (серия закончилась -> автопереход к следующей)
           if (parsed.info === 0 || parsed.data === 0) {
             if (onEnded) onEnded();
+          } else if (parsed.info === 2 || parsed.data === 2) {
+            // Если плеер встал на паузу при автоплее на мобильном устройстве
+            if (autoplay) {
+              sendCommand("playVideo");
+            }
           }
         } else if (parsed.event === "onError") {
           setErrorVideoId(videoId);
@@ -137,10 +173,11 @@ export function DedicatedDramaPlayer({
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
-  // Начальный запрос использует mute в зависимости от предпочтения пользователя (по умолчанию со звуком)
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=${
-    autoplay ? 1 : 0
-  }&mute=${isMuted ? 1 : 0}&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
+  // НАЧАЛЬНЫЙ МОНТАЖ IFRAME:
+  // Начальный запрос содержит mute=1, что гарантирует 100% обход строгой блокировки
+  // autoplay в мобильных браузерах (Safari iOS, Chrome Android).
+  // Сразу после старта unMute включает звук без вызова всплывающего оверлея YouTube.
+  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
     origin
   )}&widget_referrer=${encodeURIComponent(origin)}`;
 
@@ -157,10 +194,10 @@ export function DedicatedDramaPlayer({
         />
       )}
 
-      {/* Сам YouTube Iframe: монтируется и воспроизводится напрямую */}
+      {/* Сам YouTube Iframe: монтируется ОДИН раз со стабильным ключом */}
       <iframe
         ref={iframeRef}
-        key={`yt-player-${videoId}`}
+        key="yt-dedicated-singleton-player"
         src={embedUrl}
         title={title}
         onLoad={handleIframeLoad}
