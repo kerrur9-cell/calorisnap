@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Drama, DramaWithEpisodes, DramaProgress } from "@/lib/dramas/types";
+import { SEED_DRAMAS } from "@/lib/dramas/seed-data";
 
 export interface DramaFilters {
   query?: string;
@@ -27,6 +28,22 @@ export function useDramas(filters: DramaFilters = {}) {
       if (!res.ok) throw new Error("Не удалось загрузить сериалы");
       const data = await res.json();
       return data.dramas || [];
+    },
+    // Мгновенная инициализация из проверенного сида без ожидания сети
+    initialData: () => {
+      let list = SEED_DRAMAS as Drama[];
+      if (filters.tag && filters.tag !== "Все") {
+        list = list.filter((d) => d.tags.includes(filters.tag!));
+      }
+      if (filters.query && filters.query.trim()) {
+        const q = filters.query.trim().toLowerCase();
+        list = list.filter(
+          (d) =>
+            d.title.toLowerCase().includes(q) ||
+            (d.description ? d.description.toLowerCase().includes(q) : false)
+        );
+      }
+      return list;
     },
     staleTime: 60 * 1000,
   });

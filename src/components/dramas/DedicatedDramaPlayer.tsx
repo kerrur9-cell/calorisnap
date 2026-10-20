@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Loader2, AlertCircle, Play } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 interface DedicatedDramaPlayerProps {
   videoId: string;
@@ -11,13 +11,12 @@ interface DedicatedDramaPlayerProps {
   autoplay?: boolean;
   onEnded?: () => void;
   className?: string;
-  showControls?: boolean;
 }
 
 /**
  * Изолированный выделенный видеоплеер для китайских ИИ-сериалов.
  * Поддерживает полноэкранный режим и вертикальный режим мини-окна (9:16).
- * Обеспечивает безопасное воспроизведение без дублирования аудио.
+ * Обеспечивает мгновенный запуск без зависающих оверлеев и бесконечной загрузки.
  */
 export function DedicatedDramaPlayer({
   videoId,
@@ -28,36 +27,29 @@ export function DedicatedDramaPlayer({
   onEnded,
   className = "",
 }: DedicatedDramaPlayerProps) {
-  const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    setIsLoading(true);
     setHasError(false);
   }, [videoId]);
 
-  // Слушаем события от YouTube Player API
+  // Слушаем события от YouTube Player API для автоперехода
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
       try {
         const parsed = JSON.parse(event.data);
-        if (parsed.event === "onReady") {
-          setIsLoading(false);
-        } else if (parsed.event === "onStateChange") {
+        if (parsed.event === "onStateChange") {
           // 0 = ENDED (серия закончилась -> автопереход к следующей)
           if (parsed.info === 0 || parsed.data === 0) {
             if (onEnded) onEnded();
-          } else if (parsed.info === 1 || parsed.data === 1) {
-            setIsLoading(false);
           }
         } else if (parsed.event === "onError") {
           setHasError(true);
-          setIsLoading(false);
         }
       } catch {
-        // Игнорируем не-JSON сообщения сторонних скриптов
+        // Игнорируем не-JSON сообщения
       }
     };
 
@@ -65,25 +57,22 @@ export function DedicatedDramaPlayer({
     return () => window.removeEventListener("message", handleMessage);
   }, [onEnded]);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
   const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=${
     autoplay ? 1 : 0
-  }&mute=${isMuted ? 1 : 0}&playsinline=1&rel=0&modestbranding=1&enablejsapi=1${
-    origin ? `&origin=${encodeURIComponent(origin)}` : ""
-  }`;
+  }&mute=${isMuted ? 1 : 0}&playsinline=1&rel=0&modestbranding=1&enablejsapi=1`;
 
   return (
     <div className={`relative h-full w-full overflow-hidden bg-black flex items-center justify-center ${className}`}>
-      {/* Фоновое превью перед загрузкой видео */}
+      {/* Фоновое превью постера */}
       {thumbnailUrl && (
         <img
           src={thumbnailUrl}
           alt={title}
-          className="absolute inset-0 h-full w-full object-cover blur-sm opacity-30 scale-105 pointer-events-none"
+          className="absolute inset-0 h-full w-full object-cover blur-sm opacity-25 scale-105 pointer-events-none"
         />
       )}
 
-      {/* Сам YouTube Iframe */}
+      {/* Сам YouTube Iframe: монтируется и воспроизводится напрямую без блокирующих оверлеев */}
       <iframe
         ref={iframeRef}
         key={`yt-player-${videoId}`}
@@ -91,23 +80,12 @@ export function DedicatedDramaPlayer({
         title={title}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
         allowFullScreen
-        onLoad={() => setIsLoading(false)}
-        className="h-full w-full object-cover pointer-events-auto"
+        className="h-full w-full object-cover pointer-events-auto relative z-10"
       />
 
-      {/* Индикатор загрузки видео */}
-      {isLoading && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/60 pointer-events-none backdrop-blur-2xs">
-          <div className="flex flex-col items-center gap-2 text-white">
-            <Loader2 className="h-7 w-7 animate-spin text-primary" />
-            <span className="text-[11px] font-semibold text-white/90">Загрузка серии...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Ошибка доступности серии */}
+      {/* Ошибка доступности серии (показывается только при реальной ошибке плеера) */}
       {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-4 text-center z-20">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 p-4 text-center z-20">
           <AlertCircle className="h-8 w-8 text-amber-500 mb-2" />
           <h4 className="text-xs font-bold text-white mb-1">
             Серия временно недоступна
