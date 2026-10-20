@@ -99,10 +99,10 @@ export function normalizeFoodPreparation(data: AiAnalysisResponse, description?:
     warnings.add("Для простых круп и макарон использованы справочные КБЖУ выбранного состояния. Масло и соусы учитывайте отдельно.");
     if (!explicit) warnings.add("Крупа или макароны приняты готовыми. Проверьте состояние и вес перед сохранением.");
     return {
-      ...item, name_local: reference.name, name: `${localKey} ${state}`,
+      ...item, name_local: reference.name, name: `${key} ${state}`,
       calories_per_100g: per100.calories, protein_per_100g: per100.protein,
       fat_per_100g: per100.fat, carbs_per_100g: per100.carbs,
-      preparation_state: state, reference_food_key: localKey,
+      preparation_state: state, reference_food_key: key,
       notes: `${item.notes}${item.notes ? " " : ""}КБЖУ из справочника приложения (${state === "cooked" ? "готовый" : "сухой"} вес).`,
     };
   });
