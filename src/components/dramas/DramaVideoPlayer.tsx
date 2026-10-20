@@ -149,9 +149,12 @@ export function DramaVideoPlayer({
   };
 
   // URL официального встраиваемого плеера YouTube
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${currentEpisode.videoId}?enablejsapi=1&autoplay=1&mute=${
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const embedUrl = `https://www.youtube.com/embed/${currentEpisode.videoId}?autoplay=1&mute=${
     isMuted ? 1 : 0
-  }&playsinline=1&rel=0&modestbranding=1&controls=1`;
+  }&playsinline=1&rel=0&modestbranding=1&enablejsapi=1${origin ? `&origin=${encodeURIComponent(origin)}` : ""}`;
+
+  const directYoutubeUrl = `https://www.youtube.com/watch?v=${currentEpisode.videoId}`;
 
   return (
     <div
@@ -190,24 +193,35 @@ export function DramaVideoPlayer({
           <p className="text-xs text-white/70 max-w-xs mb-5">
             Источник ограничил внешнее воспроизведение этой серии. Вы можете перейти к следующей серии без нарушения последовательности.
           </p>
-          {hasNextEpisode ? (
-            <button
-              type="button"
-              onClick={onNextEpisode}
-              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-xs font-bold text-primary-foreground shadow-lg active:scale-95 transition-all"
+          <div className="flex flex-col sm:flex-row items-center gap-2">
+            {hasNextEpisode && (
+              <button
+                type="button"
+                onClick={onNextEpisode}
+                className="inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-xs font-bold text-primary-foreground shadow-lg active:scale-95 transition-all"
+              >
+                Следующая серия
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
+            <a
+              href={directYoutubeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-2xl bg-white/15 hover:bg-white/25 px-4 py-2.5 text-xs font-semibold text-white shadow-sm active:scale-95 transition-all"
             >
-              Перейти к следующей серии
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onOpenEpisodePicker}
-              className="rounded-2xl bg-muted px-4 py-2 text-xs font-bold text-foreground"
-            >
-              Выбрать другую серию
-            </button>
-          )}
+              Смотреть на YouTube
+            </a>
+            {!hasNextEpisode && (
+              <button
+                type="button"
+                onClick={onOpenEpisodePicker}
+                className="rounded-2xl bg-muted px-4 py-2 text-xs font-bold text-foreground"
+              >
+                Выбрать другую серию
+              </button>
+            )}
+          </div>
         </div>
       )}
 
