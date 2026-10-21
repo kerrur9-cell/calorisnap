@@ -18,10 +18,27 @@ import { useWorkouts } from "@/hooks/useWorkouts";
 import { useDayLog } from "@/hooks/useDayLog";
 import { useFriendView } from "@/context/FriendViewContext";
 import { todayKey, addDays } from "@/lib/utils";
-import { MachineCatalogModal } from "@/components/workout/MachineCatalogModal";
-import { EquipmentPhotoModal } from "@/components/workout/EquipmentPhotoModal";
-import { WorkoutVoiceModal } from "@/components/workout/WorkoutVoiceModal";
-import { ManualWorkoutModal } from "@/components/workout/ManualWorkoutModal";
+import dynamic from "next/dynamic";
+
+const MachineCatalogModal = dynamic(
+  () => import("@/components/workout/MachineCatalogModal").then((m) => m.MachineCatalogModal),
+  { ssr: false }
+);
+
+const EquipmentPhotoModal = dynamic(
+  () => import("@/components/workout/EquipmentPhotoModal").then((m) => m.EquipmentPhotoModal),
+  { ssr: false }
+);
+
+const WorkoutVoiceModal = dynamic(
+  () => import("@/components/workout/WorkoutVoiceModal").then((m) => m.WorkoutVoiceModal),
+  { ssr: false }
+);
+
+const ManualWorkoutModal = dynamic(
+  () => import("@/components/workout/ManualWorkoutModal").then((m) => m.ManualWorkoutModal),
+  { ssr: false }
+);
 
 export default function BurnPage() {
   const { isGuestView } = useFriendView();
@@ -362,46 +379,54 @@ export default function BurnPage() {
         )}
       </section>
 
-      {/* Модальные окна */}
-      <MachineCatalogModal
-        isOpen={showCatalog}
-        onClose={() => setShowCatalog(false)}
-        userWeightKg={userWeightKg}
-        userHeightCm={userHeightCm}
-        userGender={userGender}
-        userAge={userAge}
-        onAddWorkout={addWorkout}
-      />
+      {/* Модальные окна (загружаются только по требованию) */}
+      {showCatalog && (
+        <MachineCatalogModal
+          isOpen={showCatalog}
+          onClose={() => setShowCatalog(false)}
+          userWeightKg={userWeightKg}
+          userHeightCm={userHeightCm}
+          userGender={userGender}
+          userAge={userAge}
+          onAddWorkout={addWorkout}
+        />
+      )}
 
-      <EquipmentPhotoModal
-        isOpen={showPhoto}
-        onClose={() => setShowPhoto(false)}
-        userWeightKg={userWeightKg}
-        userHeightCm={userHeightCm}
-        userGender={userGender}
-        userAge={userAge}
-        onAddWorkout={addWorkout}
-      />
+      {showPhoto && (
+        <EquipmentPhotoModal
+          isOpen={showPhoto}
+          onClose={() => setShowPhoto(false)}
+          userWeightKg={userWeightKg}
+          userHeightCm={userHeightCm}
+          userGender={userGender}
+          userAge={userAge}
+          onAddWorkout={addWorkout}
+        />
+      )}
 
-      <WorkoutVoiceModal
-        isOpen={showVoice}
-        onClose={() => setShowVoice(false)}
-        userWeightKg={userWeightKg}
-        userHeightCm={userHeightCm}
-        userGender={userGender}
-        userAge={userAge}
-        onAddWorkout={addWorkout}
-      />
+      {showVoice && (
+        <WorkoutVoiceModal
+          isOpen={showVoice}
+          onClose={() => setShowVoice(false)}
+          userWeightKg={userWeightKg}
+          userHeightCm={userHeightCm}
+          userGender={userGender}
+          userAge={userAge}
+          onAddWorkout={addWorkout}
+        />
+      )}
 
-      <ManualWorkoutModal
-        isOpen={showManual}
-        onClose={() => setShowManual(false)}
-        userWeightKg={userWeightKg}
-        userHeightCm={userHeightCm}
-        userGender={userGender}
-        userAge={userAge}
-        onAddWorkout={addWorkout}
-      />
+      {showManual && (
+        <ManualWorkoutModal
+          isOpen={showManual}
+          onClose={() => setShowManual(false)}
+          userWeightKg={userWeightKg}
+          userHeightCm={userHeightCm}
+          userGender={userGender}
+          userAge={userAge}
+          onAddWorkout={addWorkout}
+        />
+      )}
     </main>
   );
 }

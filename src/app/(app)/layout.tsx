@@ -4,7 +4,11 @@ import { ThemeSync } from "@/components/app/ThemeSync";
 import { ScrollPhysics } from "@/components/app/ScrollPhysics";
 import { FriendViewProvider } from "@/context/FriendViewContext";
 import { DramaPlayerProvider } from "@/context/DramaPlayerContext";
-import { GlobalDramaMiniPlayer } from "@/components/dramas/GlobalDramaMiniPlayer";
+import dynamic from "next/dynamic";
+
+const GlobalDramaMiniPlayer = dynamic(
+  () => import("@/components/dramas/GlobalDramaMiniPlayer").then((m) => m.GlobalDramaMiniPlayer)
+);
 import { AppFooter } from "@/components/app/AppFooter";
 import { GuestModeBanner } from "@/components/friends/GuestModeBanner";
 import { createClient } from "@/lib/supabase/server";
