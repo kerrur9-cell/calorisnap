@@ -561,7 +561,16 @@ export function DramaFeed({
                 {/* Переключатель звука */}
                 <button
                   type="button"
-                  onClick={() => toggleMute()}
+                  onClick={() => {
+                    const nextMuted = !isMuted;
+                    toggleMute(nextMuted);
+                    if (!nextMuted) {
+                      activePlayerRef.current?.unMute();
+                      activePlayerRef.current?.play();
+                    } else {
+                      activePlayerRef.current?.mute();
+                    }
+                  }}
                   className="flex flex-col items-center gap-0.5 active:scale-85 transition-transform"
                   aria-label={isMuted ? "Включить звук" : "Выключить звук"}
                 >
@@ -645,6 +654,8 @@ export function DramaFeed({
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleMute(false);
+                        activePlayerRef.current?.unMute();
+                        activePlayerRef.current?.play();
                       }}
                       className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-amber-500/95 hover:bg-amber-400 border border-amber-300/60 px-2.5 py-0.5 text-[10px] font-black text-black shadow-lg backdrop-blur-md active:scale-95 transition-all animate-pulse"
                       title="Нажмите, чтобы включить звук"

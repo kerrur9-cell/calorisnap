@@ -42,7 +42,7 @@ export function DramaVideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [loadedVideoId, setLoadedVideoId] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [errorVideoId, setErrorVideoId] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
@@ -51,40 +51,105 @@ export function DramaVideoPlayer({
   const isLoading = loadedVideoId !== currentEpisode.videoId && errorVideoId !== currentEpisode.videoId;
   const videoError = errorVideoId === currentEpisode.videoId ? "Видео временно недоступно для встраивания." : null;
 
+  const [prevVideoId, setPrevVideoId] = useState(currentEpisode.videoId);
+  if (prevVideoId !== currentEpisode.videoId) {
+    setPrevVideoId(currentEpisode.videoId);
+    setIsPlaying(false);
+    setLoadedVideoId(null);
+  }
+
+  const sendIframeCommand = (command: string, args: unknown[] = []) => {
+    if (!iframeRef.current?.contentWindow) return;
+    try {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: "command", func: command, args }),
+        "*"
+      );
+    } catch {}
+  };
+
+  const handleIframeLoad = () => {
+    setLoadedVideoId(currentEpisode.videoId);
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "listening" }),
+        "*"
+      );
+    } catch {}
+    sendIframeCommand("playVideo");
+  };
+
+  useEffect(() => {
+    const ping = () => {
+      try {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: "listening" }),
+          "*"
+        );
+      } catch {}
+    };
+    ping();
+    const t = setTimeout(ping, 400);
+    return () => clearTimeout(t);
+  }, [currentEpisode.videoId]);
+
   // Слушаем события от YouTube IFrame API через postMessage
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (typeof event.data !== "string") return;
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.event === "onReady") {
-          setLoadedVideoId(currentEpisode.videoId);
-        } else if (parsed.event === "onStateChange") {
-          // data === 0 означает конец видео (ENDED)
-          if (parsed.info === 0 || parsed.data === 0) {
-            setIsPlaying(false);
-            if (onEpisodeCompleted) {
-              onEpisodeCompleted(currentEpisode.episodeNumber);
-            }
-            if (hasNextEpisode) {
-              // Автопереход к следующей серии через 1.5 секунды
-              setTimeout(() => {
-                onNextEpisode();
-              }, 1200);
-            }
-          } else if (parsed.info === 1 || parsed.data === 1) {
-            // PLAYING
-            setLoadedVideoId(currentEpisode.videoId);
-            setIsPlaying(true);
-          } else if (parsed.info === 2 || parsed.data === 2) {
-            // PAUSED
-            setIsPlaying(false);
-          }
-        } else if (parsed.event === "onError") {
-          setErrorVideoId(currentEpisode.videoId);
+      let data = event.data;
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          return;
         }
-      } catch {
-        // Игнорируем не-JSON сообщения
+      }
+      if (!data || typeof data !== "object") return;
+
+      const eventName = data.event;
+      let playerState: number | undefined;
+
+      if (typeof data.info === "number") {
+        playerState = data.info;
+      } else if (typeof data.data === "number") {
+        playerState = data.data;
+      } else if (
+        data.info &&
+        typeof data.info === "object" &&
+        typeof data.info.playerState === "number"
+      ) {
+        playerState = data.info.playerState;
+      }
+
+      if (eventName === "onReady" || eventName === "initialDelivery") {
+        setLoadedVideoId(currentEpisode.videoId);
+        sendIframeCommand("playVideo");
+      }
+
+      if (playerState !== undefined) {
+        // data === 0 означает конец видео (ENDED)
+        if (playerState === 0) {
+          setIsPlaying(false);
+          if (onEpisodeCompleted) {
+            onEpisodeCompleted(currentEpisode.episodeNumber);
+          }
+          if (hasNextEpisode) {
+            setTimeout(() => {
+              onNextEpisode();
+            }, 1200);
+          }
+        } else if (playerState === 1) {
+          // PLAYING
+          setLoadedVideoId(currentEpisode.videoId);
+          setIsPlaying(true);
+        } else if (playerState === 2) {
+          // PAUSED
+          setIsPlaying(false);
+        }
+      }
+
+      if (eventName === "onError") {
+        setErrorVideoId(currentEpisode.videoId);
       }
     };
 
@@ -101,14 +166,6 @@ export function DramaVideoPlayer({
     }, 3500);
   };
 
-  const sendIframeCommand = (command: string, args: unknown[] = []) => {
-    if (!iframeRef.current?.contentWindow) return;
-    iframeRef.current.contentWindow.postMessage(
-      JSON.stringify({ event: "command", func: command, args }),
-      "*",
-    );
-  };
-
   const handleTogglePlay = () => {
     if (isPlaying) {
       sendIframeCommand("pauseVideo");
@@ -116,6 +173,10 @@ export function DramaVideoPlayer({
     } else {
       sendIframeCommand("playVideo");
       setIsPlaying(true);
+      if (isMuted) {
+        sendIframeCommand("unMute");
+        setIsMuted(false);
+      }
     }
     resetControlsTimer();
   };
@@ -163,7 +224,7 @@ export function DramaVideoPlayer({
         title={currentEpisode.title}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
         allowFullScreen
-        onLoad={() => setLoadedVideoId(currentEpisode.videoId)}
+        onLoad={handleIframeLoad}
         className="h-full w-full object-contain pointer-events-auto"
       />
 

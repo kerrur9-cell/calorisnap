@@ -66,10 +66,18 @@ export const DedicatedDramaPlayer = forwardRef<
   ref
 ) {
   const [errorVideoId, setErrorVideoId] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isIframeReady, setIsIframeReady] = useState(false);
+  const userWantsPlayRef = useRef(false);
   const hasError = errorVideoId === videoId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const [prevVideoId, setPrevVideoId] = useState(videoId);
+  if (prevVideoId !== videoId) {
+    setPrevVideoId(videoId);
+    setIsIframeReady(false);
+    setIsPlaying(false);
+  }
 
   // Безопасная отправка команд в YouTube Player API через postMessage
   const sendCommand = useCallback((func: string, args?: unknown) => {
@@ -93,10 +101,16 @@ export const DedicatedDramaPlayer = forwardRef<
     () => ({
       play: () => {
         globalUserInteracted = true;
+        userWantsPlayRef.current = true;
         sendCommand("playVideo");
         setIsPlaying(true);
+        if (!isMuted) {
+          sendCommand("unMute");
+          sendCommand("setVolume", [100]);
+        }
       },
       pause: () => {
+        userWantsPlayRef.current = false;
         sendCommand("pauseVideo");
         setIsPlaying(false);
       },
@@ -109,7 +123,7 @@ export const DedicatedDramaPlayer = forwardRef<
         sendCommand("setVolume", [100]);
       },
     }),
-    [sendCommand]
+    [isMuted, sendCommand]
   );
 
   // Синхронизация звука
@@ -126,61 +140,132 @@ export const DedicatedDramaPlayer = forwardRef<
     }
   }, [isMuted, sendCommand]);
 
+  // Обработчик загрузки фрейма и отправка handshake listening
+  const handleIframeLoad = useCallback(() => {
+    setIsIframeReady(true);
+    try {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: "listening" }),
+          "*"
+        );
+      }
+    } catch {}
+
+    if (autoplay || userWantsPlayRef.current) {
+      sendCommand("playVideo");
+      if (!isMuted && globalUserInteracted) {
+        sendCommand("unMute");
+        sendCommand("setVolume", [100]);
+      }
+    }
+  }, [autoplay, isMuted, sendCommand]);
+
+  // Регулярный handshake listening на случай задержки загрузки
+  useEffect(() => {
+    const pingYouTube = () => {
+      try {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: "listening" }),
+          "*"
+        );
+      } catch {}
+    };
+
+    pingYouTube();
+    const t1 = setTimeout(pingYouTube, 250);
+    const t2 = setTimeout(pingYouTube, 750);
+    const t3 = setTimeout(pingYouTube, 1500);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [videoId]);
+
   // Слушаем события от YouTube Player API
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (typeof event.data !== "string") return;
-      try {
-        const parsed = JSON.parse(event.data);
-
-        if (parsed.event === "onReady" || parsed.event === "initialDelivery") {
-          setIsIframeReady(true);
-          if (autoplay) {
-            sendCommand("playVideo");
-            if (!isMuted && globalUserInteracted) {
-              sendCommand("unMute");
-              sendCommand("setVolume", [100]);
-            }
-          }
-        } else if (parsed.event === "onStateChange") {
-          // 0 = ENDED (серия закончилась -> автопереход)
-          if (parsed.info === 0 || parsed.data === 0) {
-            setIsPlaying(false);
-            if (onPlayStateChange) onPlayStateChange(false);
-            if (onEnded) onEnded();
-          } else if (parsed.info === 1 || parsed.data === 1) {
-            // PLAYING
-            setIsPlaying(true);
-            if (onPlayStateChange) onPlayStateChange(true);
-          } else if (parsed.info === 2 || parsed.data === 2) {
-            // PAUSED
-            setIsPlaying(false);
-            if (onPlayStateChange) onPlayStateChange(false);
-          }
-        } else if (parsed.event === "onError") {
-          setErrorVideoId(videoId);
+      let data = event.data;
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          return;
         }
-      } catch {}
+      }
+      if (!data || typeof data !== "object") return;
+
+      const eventName = data.event;
+      let playerState: number | undefined;
+
+      if (typeof data.info === "number") {
+        playerState = data.info;
+      } else if (typeof data.data === "number") {
+        playerState = data.data;
+      } else if (
+        data.info &&
+        typeof data.info === "object" &&
+        typeof data.info.playerState === "number"
+      ) {
+        playerState = data.info.playerState;
+      }
+
+      if (eventName === "onReady" || eventName === "initialDelivery") {
+        setIsIframeReady(true);
+        if (autoplay || userWantsPlayRef.current) {
+          sendCommand("playVideo");
+          if (!isMuted && globalUserInteracted) {
+            sendCommand("unMute");
+            sendCommand("setVolume", [100]);
+          }
+        }
+      }
+
+      if (playerState !== undefined) {
+        // -1 = UNSTARTED, 0 = ENDED, 1 = PLAYING, 2 = PAUSED, 3 = BUFFERING, 5 = CUED
+        if (playerState === 0) {
+          setIsPlaying(false);
+          userWantsPlayRef.current = false;
+          if (onPlayStateChange) onPlayStateChange(false);
+          if (onEnded) onEnded();
+        } else if (playerState === 1) {
+          setIsPlaying(true);
+          userWantsPlayRef.current = true;
+          if (onPlayStateChange) onPlayStateChange(true);
+        } else if (playerState === 2) {
+          setIsPlaying(false);
+          userWantsPlayRef.current = false;
+          if (onPlayStateChange) onPlayStateChange(false);
+        }
+      }
+
+      if (eventName === "onError") {
+        setErrorVideoId(videoId);
+      }
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [autoplay, isMuted, onEnded, onPlayStateChange, sendCommand, videoId]);
 
-  // Обработчик первого касания / клика по плееру
+  // Обработчик первого касания / клика по плееру:
+  // Если плеер не играет — ГАРАНТИРОВАННО запускаем воспроизведение с 1-го нажатия!
   const handlePlayerTap = useCallback(() => {
     globalUserInteracted = true;
     if (!isPlaying) {
+      userWantsPlayRef.current = true;
       sendCommand("playVideo");
       setIsPlaying(true);
+      if (!isMuted) {
+        sendCommand("unMute");
+        sendCommand("setVolume", [100]);
+      }
     } else {
+      userWantsPlayRef.current = false;
       sendCommand("pauseVideo");
       setIsPlaying(false);
-    }
-
-    if (!isMuted) {
-      sendCommand("unMute");
-      sendCommand("setVolume", [100]);
     }
   }, [isPlaying, isMuted, sendCommand]);
 
@@ -220,6 +305,7 @@ export const DedicatedDramaPlayer = forwardRef<
         title={title}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
         allowFullScreen
+        onLoad={handleIframeLoad}
         className="h-full w-full object-cover pointer-events-none relative z-10"
       />
 
